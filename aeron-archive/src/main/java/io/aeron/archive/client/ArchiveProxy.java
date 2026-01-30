@@ -1470,7 +1470,7 @@ public final class ArchiveProxy
         int attempts = retryAttempts;
         while (true)
         {
-            final long position = this.publication.offer(buffer, 0, MessageHeaderEncoder.ENCODED_LENGTH + length);
+            final long position = publication.offer(buffer, 0, MessageHeaderEncoder.ENCODED_LENGTH + length);
             if (position > 0)
             {
                 return true;
