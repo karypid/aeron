@@ -1020,8 +1020,8 @@ project(':aeron-agent') {
 
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE // exclude duplicate files by default
 
-        mergeServiceFiles() // merge service files into a single file
-        filesMatching("META-INF/services/**") {
+        mergeServiceFiles('META-INF/services') // merge service files into a single file
+        filesMatching('META-INF/services/**') {
             duplicatesStrategy = DuplicatesStrategy.INCLUDE // copy all services across
         }
 
@@ -1296,8 +1296,8 @@ project(':aeron-all') {
 
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE // exclude duplicate files by default
 
-        mergeServiceFiles() // merge service files into a single file
-        filesMatching("META-INF/services/**") {
+        mergeServiceFiles('META-INF/services') // merge service files into a single file
+        filesMatching('META-INF/services/**') {
             duplicatesStrategy = DuplicatesStrategy.INCLUDE // copy all services across
         }
 
