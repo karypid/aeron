@@ -130,6 +130,7 @@ import static io.aeron.cluster.ConsensusModule.Configuration.SERVICE_ID;
 import static io.aeron.cluster.ConsensusModule.Configuration.SESSION_INVALID_VERSION_MSG;
 import static io.aeron.cluster.ConsensusModule.Configuration.SESSION_LIMIT_MSG;
 import static io.aeron.cluster.ConsensusModule.Configuration.SNAPSHOT_TYPE_ID;
+import static io.aeron.cluster.ServiceAck.pollServiceAcks;
 import static io.aeron.cluster.client.AeronCluster.Configuration.PROTOCOL_SEMANTIC_VERSION;
 import static io.aeron.cluster.service.ClusteredServiceContainer.Configuration.MARK_FILE_UPDATE_INTERVAL_NS;
 import static io.aeron.exceptions.AeronException.Category.WARN;
@@ -1592,7 +1593,8 @@ final class ConsensusModuleAgent
             {
                 case SNAPSHOT:
                     ++serviceAckId;
-                    snapshotOnServiceAck(logPosition, timestamp, pollServiceAcks(logPosition, serviceId));
+                    final ServiceAck[] serviceAcks = pollServiceAcks(logPosition, serviceId, serviceAckQueues);
+                    snapshotOnServiceAck(logPosition, timestamp, serviceAcks);
                     break;
 
                 case QUITTING:
@@ -3181,24 +3183,6 @@ final class ConsensusModuleAgent
         }
 
         serviceAckQueues[serviceId].offerLast(new ServiceAck(ackId, logPosition, relevantId));
-    }
-
-    private ServiceAck[] pollServiceAcks(final long logPosition, final int serviceId)
-    {
-        final ServiceAck[] serviceAcks = new ServiceAck[serviceAckQueues.length];
-        for (int id = 0, length = serviceAckQueues.length; id < length; id++)
-        {
-            final ServiceAck serviceAck = serviceAckQueues[id].pollFirst();
-            if (null == serviceAck || serviceAck.logPosition() != logPosition)
-            {
-                throw new ClusterException(
-                    "invalid ack for serviceId=" + serviceId + " logPosition=" + logPosition + " " + serviceAck);
-            }
-
-            serviceAcks[id] = serviceAck;
-        }
-
-        return serviceAcks;
     }
 
     private int sendNewLeaderEvent(final ClusterSession session)

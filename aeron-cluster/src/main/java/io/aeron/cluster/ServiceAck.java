@@ -82,6 +82,27 @@ final class ServiceAck
         }
     }
 
+    static ServiceAck[] pollServiceAcks(
+        final long logPosition,
+        final int serviceId,
+        final ArrayDeque<ServiceAck>[] serviceAckQueues)
+    {
+        final ServiceAck[] serviceAcks = new ServiceAck[serviceAckQueues.length];
+        for (int id = 0, length = serviceAckQueues.length; id < length; id++)
+        {
+            final ServiceAck serviceAck = serviceAckQueues[id].pollFirst();
+            if (null == serviceAck || serviceAck.logPosition() != logPosition)
+            {
+                throw new ClusterException(
+                    "invalid ack for serviceId=" + serviceId + " logPosition=" + logPosition + " " + serviceAck);
+            }
+
+            serviceAcks[id] = serviceAck;
+        }
+
+        return serviceAcks;
+    }
+
     @SuppressWarnings({ "unchecked", "rawtypes" })
     static ArrayDeque<ServiceAck>[] newArrayOfQueues(final int serviceCount)
     {
