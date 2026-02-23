@@ -288,7 +288,7 @@ subprojects {
 
     tasks.register('slowTest', Test) {
         group = 'verification'
-        dependsOn ':aeron-agent:jar'
+        dependsOn ':aeron-agent:shadowJar'
 
         maxParallelForks = 1
         useJUnitPlatform {
@@ -306,7 +306,7 @@ subprojects {
 
     tasks.register('bindingsTest', Test) {
         group = 'verification'
-        dependsOn ':aeron-agent:jar'
+        dependsOn ':aeron-agent:shadowJar'
 
         maxParallelForks = 1
         useJUnitPlatform {
@@ -1039,7 +1039,7 @@ project(':aeron-agent') {
         relocate 'net.bytebuddy', 'io.aeron.shadow.net.bytebuddy'
     }
 
-    jar.finalizedBy shadowJar
+    jar.enabled = false
 
     tasks.register('sourcesJar', Jar) {
         dependsOn ':aeron-archive:generateCodecs', ':aeron-cluster:generateCodecs'
@@ -1149,7 +1149,7 @@ project(':aeron-samples') {
     }
 
     tasks.named('test').configure {
-        dependsOn ':aeron-agent:jar'
+        dependsOn ':aeron-agent:shadowJar'
 
         ext.agentFilename = {
             project.file("../aeron-agent/build/libs/aeron-agent-${aeronVersion}.jar").absolutePath
@@ -1196,7 +1196,7 @@ project(':aeron-system-tests') {
     }
 
     tasks.named('test').configure {
-        dependsOn ':aeron-agent:jar'
+        dependsOn ':aeron-agent:shadowJar'
 
         ext.agentFilename = {
             project.file("../aeron-agent/build/libs/aeron-agent-${aeronVersion}.jar").absolutePath
