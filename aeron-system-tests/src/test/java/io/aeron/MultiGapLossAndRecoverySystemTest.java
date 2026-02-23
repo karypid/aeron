@@ -102,7 +102,6 @@ public class MultiGapLossAndRecoverySystemTest
                 nakCount,
                 allOf(greaterThanOrEqualTo(gapCount), lessThanOrEqualTo(expectedCountWithBuffer)));
             assertThat(nakCount, lessThanOrEqualTo(expectedCountWithBuffer));
-            System.out.println(retransmitCount + " " + nakCount);
         }
     }
 
