@@ -3667,18 +3667,7 @@ final class ConsensusModuleAgent
 
     private boolean isSnapshotSetComplete(final ServiceAck[] serviceAcks)
     {
-        boolean isSetComplete = true;
-        for (int serviceId = serviceAcks.length - 1; serviceId >= 0; serviceId--)
-        {
-            final long snapshotId = serviceAcks[serviceId].relevantId();
-            if (NULL_VALUE == snapshotId)
-            {
-                ctx.errorLog().record(new ClusterEvent("service=" + serviceId + " failed to take snapshot"));
-                isSetComplete = false;
-            }
-        }
-
-        return isSetComplete;
+        return ServiceAck.areAllRelevantIdsNonNull("failed to take snapshot", serviceAcks, ctx.errorLog());
     }
 
     private void takeSnapshot(final long timestamp, final long logPosition, final ServiceAck[] serviceAcks)
