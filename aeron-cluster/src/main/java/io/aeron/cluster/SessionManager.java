@@ -101,32 +101,75 @@ class SessionManager
     private long nextSessionId = 1;
     private long nextCommittedSessionId = nextSessionId;
 
+    public SessionManager(
+        final ClusterMember[] activeMembers,
+        final int memberId,
+        final ClusterClock clusterClock,
+        final EgressPublisher egressPublisher,
+        final Aeron aeron,
+        final long sessionTimeoutNs,
+        final CountedErrorHandler errorHandler,
+        final Counter timedOutCounter,
+        final DistinctErrorLog errorLog,
+        final Counter standbySnapshotCounter,
+        final Authenticator authenticator,
+        final AuthorisationService authorisationService,
+        final RecordingLog recordingLog,
+        final LogPublisher logPublisher,
+        final ConsensusPublisher consensusPublisher,
+        final ConsensusModuleExtension consensusModuleExtension,
+        final int commitPositionCounterId,
+        final int clusterId,
+        final int maxConcurrentSessions)
+    {
+        this.activeMembers = activeMembers;
+        this.memberId = memberId;
+        this.clusterClock = clusterClock;
+        this.sessionProxy = new ClusterSessionProxy(egressPublisher);
+        this.egressPublisher = egressPublisher;
+        this.clusterTimeUnit = clusterClock.timeUnit();
+        this.aeron = aeron;
+        this.sessionTimeoutNs = sessionTimeoutNs;
+        this.errorHandler = errorHandler;
+        this.timedOutCounter = timedOutCounter;
+        this.errorLog = errorLog;
+        this.standbySnapshotCounter = standbySnapshotCounter;
+        this.authenticator = authenticator;
+        this.authorisationService = authorisationService;
+        this.recordingLog = recordingLog;
+        this.logPublisher = logPublisher;
+        this.consensusPublisher = consensusPublisher;
+        this.consensusModuleExtension = consensusModuleExtension;
+        this.commitPositionCounterId = commitPositionCounterId;
+        this.clusterId = clusterId;
+        this.maxConcurrentSessions = maxConcurrentSessions;
+    }
+
     SessionManager(
         final ConsensusModule.Context ctx,
         final ClusterMember[] activeMembers,
         final ConsensusPublisher consensusPublisher)
     {
-        this.memberId = ctx.clusterMemberId();
-        this.clusterClock = ctx.clusterClock();
-        this.activeMembers = activeMembers;
-        this.egressPublisher = ctx.egressPublisher();
-        this.sessionProxy = new ClusterSessionProxy(egressPublisher);
-        this.logPublisher = ctx.logPublisher();
-        this.consensusPublisher = consensusPublisher;
-        this.clusterTimeUnit = clusterClock.timeUnit();
-        this.aeron = ctx.aeron();
-        this.sessionTimeoutNs = ctx.sessionTimeoutNs();
-        this.errorHandler = ctx.countedErrorHandler();
-        this.timedOutCounter = ctx.timedOutClientCounter();
-        this.errorLog = ctx.errorLog();
-        this.standbySnapshotCounter = ctx.standbySnapshotCounter();
-        this.authenticator = ctx.authenticatorSupplier().get();
-        this.authorisationService = ctx.authorisationServiceSupplier().get();
-        this.recordingLog = ctx.recordingLog();
-        this.consensusModuleExtension = ctx.consensusModuleExtension();
-        this.commitPositionCounterId = ctx.commitPositionCounter().id();
-        this.clusterId = ctx.clusterId();
-        this.maxConcurrentSessions = ctx.maxConcurrentSessions();
+        this(
+            activeMembers,
+            ctx.clusterMemberId(),
+            ctx.clusterClock(),
+            ctx.egressPublisher(),
+            ctx.aeron(),
+            ctx.sessionTimeoutNs(),
+            ctx.countedErrorHandler(),
+            ctx.timedOutClientCounter(),
+            ctx.errorLog(),
+            ctx.standbySnapshotCounter(),
+            ctx.authenticatorSupplier().get(),
+            ctx.authorisationServiceSupplier().get(),
+            ctx.recordingLog(),
+            ctx.logPublisher(),
+            consensusPublisher,
+            ctx.consensusModuleExtension(),
+            ctx.commitPositionCounter().id(),
+            ctx.clusterId(),
+            ctx.maxConcurrentSessions());
     }
 
     ClusterSession findBySessionId(final long clusterSessionId)
