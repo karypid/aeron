@@ -177,6 +177,16 @@ class SessionManager
         return sessionByIdMap.get(clusterSessionId);
     }
 
+    /**
+     * Get all the sessions, used by cluster standby for export prior to transition.
+     *
+     * @return all the cluster sessions.
+     */
+    Iterable<ClusterSession> findAll()
+    {
+        return sessions;
+    }
+
     AuthorisationService authorisationService()
     {
         return authorisationService;
