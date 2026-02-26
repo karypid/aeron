@@ -101,7 +101,7 @@ class SessionManager
     private long nextSessionId = 1;
     private long nextCommittedSessionId = nextSessionId;
 
-    public SessionManager(
+    SessionManager(
         final ClusterMember[] activeMembers,
         final int memberId,
         final ClusterClock clusterClock,
@@ -197,31 +197,6 @@ class SessionManager
         return nextCommittedSessionId;
     }
 
-    void addSession(final ClusterSession session)
-    {
-        sessionByIdMap.put(session.id(), session);
-
-        final int size = sessions.size();
-        int addIndex = size;
-        for (int i = size - 1; i >= 0; i--)
-        {
-            if (sessions.get(i).id() < session.id())
-            {
-                addIndex = i + 1;
-                break;
-            }
-        }
-
-        if (size == addIndex)
-        {
-            sessions.add(session);
-        }
-        else
-        {
-            sessions.add(addIndex, session);
-        }
-    }
-
     void closeSession(final ClusterSession session)
     {
         final long sessionId = session.id();
@@ -244,7 +219,7 @@ class SessionManager
         }
     }
 
-    public void onSessionConnect(
+    void onSessionConnect(
         final long correlationId,
         final int responseStreamId,
         final int version,
@@ -1095,6 +1070,31 @@ class SessionManager
             {
                 session.closing(CloseReason.TIMEOUT);
             }
+        }
+    }
+
+    private void addSession(final ClusterSession session)
+    {
+        sessionByIdMap.put(session.id(), session);
+
+        final int size = sessions.size();
+        int addIndex = size;
+        for (int i = size - 1; i >= 0; i--)
+        {
+            if (sessions.get(i).id() < session.id())
+            {
+                addIndex = i + 1;
+                break;
+            }
+        }
+
+        if (size == addIndex)
+        {
+            sessions.add(session);
+        }
+        else
+        {
+            sessions.add(addIndex, session);
         }
     }
 
