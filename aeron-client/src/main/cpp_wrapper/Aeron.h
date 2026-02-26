@@ -98,6 +98,10 @@ public:
         m_availableCounterHandlers.clear();
         m_unavailableCounterHandlers.clear();
         m_closeClientHandlers.clear();
+        m_pendingCounters.clear();
+        m_pendingPublications.clear();
+        m_pendingExclusivePublications.clear();
+        m_pendingSubscriptions.clear();
 
         aeron_context_close(m_aeron_context);
     }
