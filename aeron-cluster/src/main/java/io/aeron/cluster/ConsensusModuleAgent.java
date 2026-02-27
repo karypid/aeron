@@ -721,7 +721,8 @@ final class ConsensusModuleAgent
             encodedCredentials,
             clientInfo,
             header,
-            role
+            role,
+            ingressEndpoints
         );
     }
 
@@ -2320,7 +2321,7 @@ final class ConsensusModuleAgent
 
         workCount += pollArchiveEvents();
 
-        workCount += sessionManager.sendRedirects(leadershipTermId, leaderMember.id(), ingressEndpoints, nowNs);
+        workCount += sessionManager.sendRedirects(leadershipTermId, leaderMember.id(), nowNs);
         workCount += sessionManager.sendRejections(leadershipTermId, leaderMember.id(), nowNs);
 
         if (null == election)

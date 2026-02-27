@@ -382,6 +382,12 @@ final class ClusterSession implements ClusterClientSession
         }
     }
 
+    void redirect(final String ingressEndpoints)
+    {
+        this.eventCode = EventCode.REDIRECT;
+        this.responseDetail = ingressEndpoints;
+    }
+
     EventCode eventCode()
     {
         return eventCode;

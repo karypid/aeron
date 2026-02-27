@@ -227,7 +227,8 @@ class SessionManager
         final byte[] encodedCredentials,
         final String clientInfo,
         final Header header,
-        final Cluster.Role role)
+        final Cluster.Role role,
+        final String ingressEndpoints)
     {
         final long clusterSessionId = Cluster.Role.LEADER == role ? nextSessionId++ : NULL_VALUE;
         final ClusterSession session = new ClusterSession(
@@ -243,6 +244,7 @@ class SessionManager
 
         if (Cluster.Role.LEADER != role)
         {
+            session.redirect(ingressEndpoints);
             redirectUserSessions.add(session);
         }
         else
@@ -883,49 +885,9 @@ class SessionManager
     int sendRedirects(
         final long leadershipTermId,
         final int leaderMemberId,
-        final String ingressEndpoints,
         final long nowNs)
     {
-        return sendRedirects(redirectUserSessions, leadershipTermId, leaderMemberId, ingressEndpoints, nowNs);
-    }
-
-    private int sendRedirects(
-        final ArrayList<ClusterSession> redirectSessions,
-        final long leadershipTermId,
-        final int leaderMemberId,
-        final String ingressEndpoints,
-        final long nowNs)
-    {
-        int workCount = 0;
-
-        for (int lastIndex = redirectSessions.size() - 1, i = lastIndex; i >= 0; i--)
-        {
-            final ClusterSession session = redirectSessions.get(i);
-            final EventCode eventCode = EventCode.REDIRECT;
-
-            if (session.isResponsePublicationConnected(aeron, nowNs) &&
-                egressPublisher.sendEvent(session, leadershipTermId, leaderMemberId, eventCode, ingressEndpoints))
-            {
-                ArrayListUtil.fastUnorderedRemove(redirectSessions, i, lastIndex--);
-                session.close(aeron, errorHandler, eventCode.name());
-                workCount++;
-            }
-            else if (session.state() != ClusterSession.State.INIT &&
-                nowNs > (session.timeOfLastActivityNs() + sessionTimeoutNs))
-            {
-                ArrayListUtil.fastUnorderedRemove(redirectSessions, i, lastIndex--);
-                session.close(aeron, errorHandler, "session timed out");
-                workCount++;
-            }
-            else if (session.state() == INVALID)
-            {
-                ArrayListUtil.fastUnorderedRemove(redirectSessions, i, lastIndex--);
-                session.close(aeron, errorHandler, "invalid");
-                workCount++;
-            }
-        }
-
-        return workCount;
+        return sendForAll(redirectUserSessions, leadershipTermId, leaderMemberId, nowNs);
     }
 
     int sendRejections(
@@ -935,43 +897,43 @@ class SessionManager
     {
         int workCount = 0;
 
-        workCount += sendRejections(rejectedUserSessions, leadershipTermId, leaderMemberId, nowNs);
-        workCount += sendRejections(rejectedBackupSessions, leadershipTermId, leaderMemberId, nowNs);
+        workCount += sendForAll(rejectedUserSessions, leadershipTermId, leaderMemberId, nowNs);
+        workCount += sendForAll(rejectedBackupSessions, leadershipTermId, leaderMemberId, nowNs);
 
         return workCount;
     }
 
-    private int sendRejections(
-        final ArrayList<ClusterSession> rejectedSessions,
+    private int sendForAll(
+        final ArrayList<ClusterSession> sessions,
         final long leadershipTermId,
         final int leaderMemberId,
         final long nowNs)
     {
         int workCount = 0;
 
-        for (int lastIndex = rejectedSessions.size() - 1, i = lastIndex; i >= 0; i--)
+        for (int lastIndex = sessions.size() - 1, i = lastIndex; i >= 0; i--)
         {
-            final ClusterSession session = rejectedSessions.get(i);
-            final String detail = session.responseDetail();
+            final ClusterSession session = sessions.get(i);
             final EventCode eventCode = session.eventCode();
+            final String detail = session.responseDetail();
 
             if (session.isResponsePublicationConnected(aeron, nowNs) &&
                 egressPublisher.sendEvent(session, leadershipTermId, leaderMemberId, eventCode, detail))
             {
-                ArrayListUtil.fastUnorderedRemove(rejectedSessions, i, lastIndex--);
+                ArrayListUtil.fastUnorderedRemove(sessions, i, lastIndex--);
                 session.close(aeron, errorHandler, eventCode.name());
                 workCount++;
             }
             else if (session.state() != ClusterSession.State.INIT &&
                 nowNs > (session.timeOfLastActivityNs() + sessionTimeoutNs))
             {
-                ArrayListUtil.fastUnorderedRemove(rejectedSessions, i, lastIndex--);
+                ArrayListUtil.fastUnorderedRemove(sessions, i, lastIndex--);
                 session.close(aeron, errorHandler, "session timed out");
                 workCount++;
             }
             else if (session.state() == INVALID)
             {
-                ArrayListUtil.fastUnorderedRemove(rejectedSessions, i, lastIndex--);
+                ArrayListUtil.fastUnorderedRemove(sessions, i, lastIndex--);
                 session.close(aeron, errorHandler, "invalid");
                 workCount++;
             }
