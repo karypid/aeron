@@ -299,35 +299,58 @@ class SessionManager
         final byte[] encodedCredentials,
         final Header header)
     {
-        final ClusterSession session = new ClusterSession(
-            memberId,
-            NULL_VALUE,
+        onBackupAction(
+            ClusterSession.Action.STANDBY_SNAPSHOT,
+            standbySnapshotEntries,
+            correlationId,
             responseStreamId,
+            version,
             responseChannel,
-            sessionInfo(ClusterSession.Action.STANDBY_SNAPSHOT.name(), header));
-
-        final long nowNs = clusterClock.timeNanos();
-
-        session.action(ClusterSession.Action.STANDBY_SNAPSHOT);
-        session.asyncConnect(aeron, tempBuffer, clusterId);
-        session.lastActivityNs(nowNs, correlationId);
-        session.requestInput(standbySnapshotEntries);
-
-        if (AeronCluster.Configuration.PROTOCOL_MAJOR_VERSION == SemanticVersion.major(version))
-        {
-            authenticator.onConnectRequest(session.id(), encodedCredentials, NANOSECONDS.toMillis(nowNs));
-            pendingBackupSessions.add(session);
-        }
-        else
-        {
-            final String detail = SESSION_INVALID_VERSION_MSG + " " + SemanticVersion.toString(version) +
-                ", cluster=" + SemanticVersion.toString(PROTOCOL_SEMANTIC_VERSION);
-            session.reject(EventCode.ERROR, detail, errorLog);
-            rejectedBackupSessions.add(session);
-        }
+            encodedCredentials,
+            header);
     }
 
     void onBackupQuery(
+        final long correlationId,
+        final int responseStreamId,
+        final int version,
+        final String responseChannel,
+        final byte[] encodedCredentials,
+        final Header header)
+    {
+        onBackupAction(
+            ClusterSession.Action.BACKUP,
+            null,
+            correlationId,
+            responseStreamId,
+            version,
+            responseChannel,
+            encodedCredentials,
+            header
+        );
+    }
+
+    void onHeartbeatRequest(
+        final long correlationId,
+        final int responseStreamId,
+        final String responseChannel,
+        final byte[] encodedCredentials,
+        final Header header)
+    {
+        onBackupAction(
+            ClusterSession.Action.BACKUP,
+            null,
+            correlationId,
+            responseStreamId,
+            PROTOCOL_SEMANTIC_VERSION,
+            responseChannel,
+            encodedCredentials,
+            header);
+    }
+
+    private void onBackupAction(
+        final ClusterSession.Action action,
+        final Object requestInput,
         final long correlationId,
         final int responseStreamId,
         final int version,
@@ -340,13 +363,14 @@ class SessionManager
             NULL_VALUE,
             responseStreamId,
             responseChannel,
-            sessionInfo(ClusterSession.Action.BACKUP.name(), header));
+            sessionInfo(action.name(), header));
 
         final long nowNs = clusterClock.timeNanos();
 
-        session.action(ClusterSession.Action.BACKUP);
+        session.action(action);
         session.asyncConnect(aeron, tempBuffer, clusterId);
         session.lastActivityNs(nowNs, correlationId);
+        session.requestInput(requestInput);
 
         if (AeronCluster.Configuration.PROTOCOL_MAJOR_VERSION == SemanticVersion.major(version))
         {
@@ -360,29 +384,6 @@ class SessionManager
             session.reject(EventCode.ERROR, detail, errorLog);
             rejectedBackupSessions.add(session);
         }
-    }
-
-    void onHeartbeatRequest(
-        final long correlationId,
-        final int responseStreamId,
-        final String responseChannel,
-        final byte[] encodedCredentials,
-        final Header header)
-    {
-        final ClusterSession session = new ClusterSession(
-            memberId,
-            NULL_VALUE,
-            responseStreamId,
-            responseChannel,
-            sessionInfo(ClusterSession.Action.HEARTBEAT.name(), header));
-
-        final long nowNs = clusterClock.timeNanos();
-        session.action(ClusterSession.Action.HEARTBEAT);
-        session.asyncConnect(aeron, tempBuffer, clusterId);
-        session.lastActivityNs(nowNs, correlationId);
-
-        authenticator.onConnectRequest(session.id(), encodedCredentials, NANOSECONDS.toMillis(nowNs));
-        pendingBackupSessions.add(session);
     }
 
     void onChallengeResponseForBackupSession(
@@ -924,8 +925,7 @@ class SessionManager
                 session.close(aeron, errorHandler, eventCode.name());
                 workCount++;
             }
-            else if (session.state() != ClusterSession.State.INIT &&
-                nowNs > (session.timeOfLastActivityNs() + sessionTimeoutNs))
+            else if (session.hasTimedOut(nowNs, sessionTimeoutNs))
             {
                 ArrayListUtil.fastUnorderedRemove(sessions, i, lastIndex--);
                 session.close(aeron, errorHandler, "session timed out");

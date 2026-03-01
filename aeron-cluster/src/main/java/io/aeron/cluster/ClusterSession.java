@@ -476,6 +476,11 @@ final class ClusterSession implements ClusterClientSession
         return ingressImageCorrelationId;
     }
 
+    boolean hasTimedOut(final long nowNs, final long sessionTimeoutNs)
+    {
+        return State.INIT != state() && (timeOfLastActivityNs() + sessionTimeoutNs) < nowNs;
+    }
+
     private long addSessionCounter(final Aeron aeron, final MutableDirectBuffer tempBuffer, final int clusterId)
     {
         tempBuffer.putInt(0, clusterId);
