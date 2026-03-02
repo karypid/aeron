@@ -338,7 +338,7 @@ class SessionManager
         final Header header)
     {
         onBackupAction(
-            ClusterSession.Action.BACKUP,
+            ClusterSession.Action.HEARTBEAT,
             null,
             correlationId,
             responseStreamId,
