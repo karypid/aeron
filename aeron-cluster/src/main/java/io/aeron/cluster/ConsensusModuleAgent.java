@@ -1181,7 +1181,9 @@ final class ConsensusModuleAgent
     {
         if (null == election)
         {
-            if (state == ConsensusModule.State.ACTIVE || state == ConsensusModule.State.SUSPENDED)
+            if (state == ConsensusModule.State.ACTIVE ||
+                state == ConsensusModule.State.SUSPENDED ||
+                state == ConsensusModule.State.SNAPSHOT)
             {
                 sessionManager.onBackupQuery(
                     correlationId,
@@ -1203,7 +1205,9 @@ final class ConsensusModuleAgent
     {
         if (null == election)
         {
-            if (state == ConsensusModule.State.ACTIVE || state == ConsensusModule.State.SUSPENDED)
+            if (state == ConsensusModule.State.ACTIVE ||
+                state == ConsensusModule.State.SUSPENDED ||
+                state == ConsensusModule.State.SNAPSHOT)
             {
                 sessionManager.onHeartbeatRequest(
                     correlationId,
@@ -1242,7 +1246,9 @@ final class ConsensusModuleAgent
     {
         if (null == election)
         {
-            if (state == ConsensusModule.State.ACTIVE || state == ConsensusModule.State.SUSPENDED)
+            if (state == ConsensusModule.State.ACTIVE ||
+                state == ConsensusModule.State.SUSPENDED ||
+                state == ConsensusModule.State.SNAPSHOT)
             {
                 sessionManager.onStandbySnapshot(
                     correlationId,
