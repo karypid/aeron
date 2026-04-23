@@ -1,25 +1,23 @@
-/*
- * Copyright 2014-2025 Real Logic Limited.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2014-2024 Real Logic Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
 
 #include <gtest/gtest.h>
 #include <queue>
 
 extern "C"
 {
-#include "concurrent/aeron_executor.h"
+#include "aeron_async_executor.h"
 }
 
 typedef struct
@@ -34,12 +32,18 @@ class ExecutorTest : public testing::Test
 public:
     void SetUp() override
     {
-        if (aeron_executor_init(
+        if (aeron_driver_context_init(&m_context) < 0)
+        {
+            throw std::runtime_error("could not init context");
+        }
+
+        m_context->async_executor_enabled = be_async();
+
+        if (aeron_async_executor_init(
             &m_executor,
-            be_async(),
-            aeron_idle_strategy_sleeping_idle,
-            &m_idle_sleep_ns,
-            on_execution_complete_cb(),
+            m_context,
+            m_name_resolver,
+            "role_name",
             this) < 0)
         {
             throw std::runtime_error("could not init q");
@@ -48,15 +52,11 @@ public:
 
     void TearDown() override
     {
-        aeron_executor_close(&m_executor);
+        aeron_async_executor_close(&m_executor);
+        aeron_driver_context_close(m_context);
     }
 
     virtual bool be_async() = 0;
-
-    virtual aeron_executor_on_execution_complete_func_t on_execution_complete_cb()
-    {
-        return nullptr;
-    }
 
     static int on_execute(void *task_clientd, void *executor_clientd)
     {
@@ -77,12 +77,13 @@ public:
     }
 
 protected:
-    aeron_executor_t m_executor = {};
+    aeron_driver_context_t *m_context = nullptr;
+    aeron_name_resolver_t *m_name_resolver = nullptr;
+    aeron_async_executor_t m_executor = {};
     std::function<int(void *, void *)> m_on_execute;
     std::function<int(int, void *, void *)> m_on_complete;
     int m_on_execute_count = 0;
     int m_on_complete_count = 0;
-    uint64_t m_idle_sleep_ns = 1000000;
 };
 
 class SyncExecutorTest : public ExecutorTest
@@ -116,7 +117,7 @@ TEST_F(SyncExecutorTest, shouldExecuteSynchronously)
             return ++result;
         };
 
-    int result = aeron_executor_submit(
+    int result = aeron_async_executor_submit(
         &m_executor,
         SyncExecutorTest::on_execute,
         SyncExecutorTest::on_complete,
@@ -166,7 +167,7 @@ TEST_F(AsyncExecutorTest, shouldExecuteAsynchronously)
 
     for (int i = 0; i < TOTAL_TASKS; i++)
     {
-        int result = aeron_executor_submit(
+        int result = aeron_async_executor_submit(
             &m_executor,
             SyncExecutorTest::on_execute,
             SyncExecutorTest::on_complete,
@@ -179,7 +180,7 @@ TEST_F(AsyncExecutorTest, shouldExecuteAsynchronously)
 
     while (m_on_complete_count < TOTAL_TASKS)
     {
-        work_count += aeron_executor_process_completions(&m_executor, 50);
+        work_count += aeron_async_executor_process_completions(&m_executor, 50);
     }
 
     ASSERT_EQ(work_count, TOTAL_TASKS);
@@ -187,77 +188,4 @@ TEST_F(AsyncExecutorTest, shouldExecuteAsynchronously)
     ASSERT_EQ(m_on_complete_count, TOTAL_TASKS);
     ASSERT_EQ(tcd.some_value, TOTAL_TASKS * 100);
     ASSERT_EQ(tcd.some_other_value, TOTAL_TASKS * 50);
-}
-
-class AsyncNoReturnQueueExecutorTest : public AsyncExecutorTest
-{
-public:
-    aeron_executor_on_execution_complete_func_t on_execution_complete_cb() override
-    {
-        return AsyncNoReturnQueueExecutorTest::on_execution_complete_cb;
-    };
-
-    static int on_execution_complete_cb(aeron_executor_task_t *task, void *executor_clientd)
-    {
-        auto e = ((AsyncNoReturnQueueExecutorTest *)executor_clientd);
-
-        task->on_complete(
-            task->result,
-            task->errcode,
-            task->errmsg,
-            task->clientd,
-            task->executor->clientd);
-
-        e->m_on_execution_complete_count++;
-
-        return 0;
-    }
-
-protected:
-    int m_on_execution_complete_count = 0;
-};
-
-
-TEST_F(AsyncNoReturnQueueExecutorTest, shouldExecuteAsynchronously)
-{
-    task_clientd_t tcd;
-
-    tcd.some_value = 0;
-
-    m_on_execute =
-        [&](void *task_clientd, void *executor_clientd)
-        {
-            ((task_clientd_t *)task_clientd)->some_value += 100;
-
-            return 1;
-        };
-
-    m_on_complete =
-        [&](int result, void *task_clientd, void *executor_clientd)
-        {
-            ((task_clientd_t *)task_clientd)->some_value += 100;
-
-            return ++result;
-        };
-
-    for (int i = 0; i < TOTAL_TASKS; i++)
-    {
-        int result = aeron_executor_submit(
-            &m_executor,
-            SyncExecutorTest::on_execute,
-            SyncExecutorTest::on_complete,
-            SyncExecutorTest::on_cancel,
-            &tcd);
-        ASSERT_EQ(result, 0);
-    }
-
-    while (m_on_execution_complete_count < TOTAL_TASKS)
-    {
-        sched_yield();
-    }
-
-    ASSERT_EQ(m_on_execution_complete_count, TOTAL_TASKS);
-    ASSERT_EQ(m_on_execute_count, TOTAL_TASKS);
-    ASSERT_EQ(m_on_complete_count, TOTAL_TASKS);
-    ASSERT_EQ(tcd.some_value, TOTAL_TASKS * 200);
 }

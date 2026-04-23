@@ -79,8 +79,6 @@ class DriverNameResolverSystemTest
     @BeforeEach
     void before()
     {
-        assumeTrue(TestMediaDriver.shouldRunJavaMediaDriver());
-
         testWatcher.ignoreErrorsMatching(s -> s.contains("Failed to send resolution frames to neighbor"));
     }
 
@@ -343,7 +341,9 @@ class DriverNameResolverSystemTest
     {
         testWatcher.ignoreErrorsMatching(
             (s) -> s.contains("java.lang.IllegalArgumentException: invalid format: just:wrong") ||
-                s.contains("ava.net.UnknownHostException: unresolved - endpoint=non_existing_host:8050"));
+                s.contains("ava.net.UnknownHostException: unresolved - endpoint=non_existing_host:8050") ||
+                s.contains("Invalid argument") ||
+                s.contains("unknown host"));
 
         addDriver(TestMediaDriver.launch(setDefaults(new MediaDriver.Context())
             .aeronDirectoryName(baseDir + "-A")
@@ -427,6 +427,8 @@ class DriverNameResolverSystemTest
     @InterruptAfter(30)
     void shouldFallbackToAnotherBootstrapNeighborIfOneBecomesUnavailable()
     {
+        assumeTrue(TestMediaDriver.shouldRunJavaMediaDriver());
+
         testWatcher.ignoreErrorsMatching(
             (s) -> s.contains("java.net.UnknownHostException: unresolved - endpoint=localhostA:8050"));
 
@@ -541,6 +543,8 @@ class DriverNameResolverSystemTest
     @SuppressWarnings("try")
     void shouldUseActuallySpecifiedHostNamePortPairForCreatingChannelUri()
     {
+        assumeTrue(TestMediaDriver.shouldRunJavaMediaDriver());
+
         final String aeronDir = baseDir + "-error";
         final MutableReference<Throwable> error = new MutableReference<>();
 
@@ -572,6 +576,7 @@ class DriverNameResolverSystemTest
         context
             .publicationTermBufferLength(LogBufferDescriptor.TERM_MIN_LENGTH)
             .threadingMode(ThreadingMode.SHARED)
+            .asyncExecutorEnabled(true)
             .dirDeleteOnStart(true)
             .resolverNeighborTimeoutNs(TimeUnit.SECONDS.toNanos(2))
             .resolverSelfResolutionIntervalNs(TimeUnit.SECONDS.toNanos(1))
