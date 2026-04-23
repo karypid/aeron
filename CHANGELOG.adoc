@@ -110,11 +110,12 @@ but is now explicitly enforced via the ClusteredServiceContainer.Configuration.M
 * **[Archive]** Fix `CATALOG_RESIZE` debug logging.
 * **[C]** Renamed `aeron_archive_proxy_set_control_esssion_id` to `aeron_archive_proxy_set_control_session_id`.
 * **[Java]** Upgrade to `Gradle` 9.4.1.
-* **[Java]** Upgrade to `ByteBuddy` 1.18.7.
+* **[Java]** Upgrade to `ByteBuddy` 1.18.8.
 * **[Java]** Upgrade to `Mockito` 5.23.0.
 * **[Java]** Upgrade to `JUnit` 6.0.3.
 * **[Java]** Upgrade to `Checkstyle` 12.3.1.
 * **[Java]** Upgrade to `Shadow` 9.4.1.
+* **[Java]** Upgrade to `Versions` 0.54.0.
 * **[C]** Upgrade to `CMake` 4.3.1.
 
 == 1.50.4 (2026-03-20)
