@@ -52,14 +52,22 @@ for ($i = 0; $i -lt $Args.count; $i++)
     elseif ($arg -eq "--c-warnings-as-errors")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DC_WARNINGS_AS_ERRORS=ON"
+        Write-Host "Enabling warnings as errors for c"
     }
     elseif ($arg -eq "--cxx-warnings-as-errors")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DCXX_WARNINGS_AS_ERRORS=ON"
+        Write-Host "Enabling warnings as errors for c++"
     }
     elseif ($arg -eq "--cxx-hide-deprecation-message")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DAERON_HIDE_DEPRECATION_MESSAGE=ON"
+        Write-Host "Hiding API deprecation message for c++"
+    }
+    elseif ($arg -eq "--skip-archive-api")
+    {
+        $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DBUILD_AERON_ARCHIVE_API=OFF"
+        Write-Host "Disabling building of Aeron Archive API"
     }
     elseif ($arg -eq "--link-samples-client-shared")
     {
@@ -72,18 +80,22 @@ for ($i = 0; $i -lt $Args.count; $i++)
     elseif ($arg -eq "--no-tests")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DAERON_TESTS=OFF"
+        Write-Host "Disabling all tests"
     }
     elseif ($arg -eq "--no-system-tests")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DAERON_SYSTEM_TESTS=OFF"
+        Write-Host "Disabling system tests"
     }
     elseif ($arg -eq "--no-unit-tests")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DAERON_UNIT_TESTS=OFF"
+        Write-Host "Disabling unit tests"
     }
     elseif ($arg -eq "--slow-system-tests")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DAERON_SLOW_SYSTEM_TESTS=ON"
+        Write-Host "Enabling slow system tests"
     }
     elseif ($arg -eq "--debug-build")
     {
@@ -112,6 +124,7 @@ for ($i = 0; $i -lt $Args.count; $i++)
     elseif ($arg -eq "--sanitise-build")
     {
         $CmakeExtraArgs = Add-Arg $CmakeExtraArgs "-DSANITISE_BUILD=ON"
+        Write-Host "Enabling sanitise build"
     }
     elseif ($arg -eq "--gradle-wrapper")
     {
@@ -134,12 +147,12 @@ for ($i = 0; $i -lt $Args.count; $i++)
     {
         if ($i + 1 -eq $Args.count)
         {
-            throw "--gradle-wrapper requires a parameter"
+            throw "--parallel-cpus requires a parameter"
         }
         $nextArg = $Args[$i + 1]
 
         $CmakeBuildParallelLevel = $nextArg
-        Write-Host "Using $CmakeBuildParallelLevel cpus"
+        Write-Host "Using $CmakeBuildParallelLevel CPUs"
         $i++
     }
     else
