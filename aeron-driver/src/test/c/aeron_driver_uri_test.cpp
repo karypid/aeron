@@ -754,7 +754,7 @@ TEST_F(UriResolverTest, shouldDefaultResolveRawIPv6AddressesAndHostNames)
     EXPECT_EQ(0, m_resolver.resolve_func(&m_resolver, "fe00::0", "endpoint", false, &m_addr));
     EXPECT_EQ(AF_INET6, m_addr.ss_family);
 
-    EXPECT_EQ(0, m_resolver.resolve_func(&m_resolver, "ip6-localhost", "endpoint", false, &m_addr));
+    EXPECT_EQ(0, m_resolver.resolve_func(&m_resolver, "ip6-localnet", "endpoint", false, &m_addr));
     EXPECT_EQ(AF_INET6, m_addr.ss_family);
 #endif
 }
@@ -780,7 +780,7 @@ TEST_F(UriResolverTest, shouldHandleIpv6ResultFromHostNameResolution)
     EXPECT_EQ(AF_INET6, addr_in6->sin6_family);
     EXPECT_EQ(htons(5054), addr_in6->sin6_port);
 
-    EXPECT_EQ(0, aeron_name_resolver_resolve_host_and_port(&m_resolver, "ip6-localhost:5055", "endpoint", false, &m_addr));
+    EXPECT_EQ(0, aeron_name_resolver_resolve_host_and_port(&m_resolver, "ip6-localnet:5055", "endpoint", false, &m_addr));
     EXPECT_EQ(AF_INET6, m_addr.ss_family);
     EXPECT_EQ(AF_INET6, addr_in6->sin6_family);
     EXPECT_EQ(htons(5055), addr_in6->sin6_port);

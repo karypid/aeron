@@ -93,7 +93,11 @@ int aeron_default_name_resolver_resolve(
     bool is_re_resolution,
     struct sockaddr_storage *address)
 {
-    return aeron_ip_addr_resolver(name, address, AF_UNSPEC, IPPROTO_UDP);
+    if (0 == aeron_ip_addr_resolver(name, address, AF_INET, IPPROTO_UDP))
+    {
+        return 0;
+    }
+    return aeron_ip_addr_resolver(name, address, AF_INET6, IPPROTO_UDP);
 }
 
 int aeron_default_name_resolver_lookup(
