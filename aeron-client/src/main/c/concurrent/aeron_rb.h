@@ -79,6 +79,6 @@ typedef aeron_rb_read_action_t (*aeron_rb_controlled_handler_t)(int32_t, const v
 #define AERON_RB_IS_CAPACITY_VALID(capacity, min_capacity) \
     (AERON_IS_POWER_OF_TWO(capacity) && \
     (capacity) >= (min_capacity) && \
-    (capacity) <= INT32_MAX)
+    (capacity) < INT32_MAX)
 
 #endif //AERON_RB_H
