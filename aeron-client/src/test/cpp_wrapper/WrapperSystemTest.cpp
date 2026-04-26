@@ -186,7 +186,7 @@ TEST_F(WrapperSystemTest, shouldRemovePendingAsyncPublicationUponSuccess)
     }
 }
 
-TEST_F(WrapperSystemTest, shouldManuallyFreeAsyncPublicationIfNotPolled)
+TEST_F(WrapperSystemTest, asyncPublicationIsAutomaticallyFreedWhenAeronIsClosed)
 {
     Context ctx;
     ctx.useConductorAgentInvoker(true);
@@ -197,11 +197,10 @@ TEST_F(WrapperSystemTest, shouldManuallyFreeAsyncPublicationIfNotPolled)
 
     auto channel = "aeron:udp?endpoint=localhost:5555";
     int stream_id = 1000;
-    auto async = aeron->addPublicationAsync(channel, stream_id);
-    aeron_async_cmd_free(async); // safe since client conductor is not running concurrently
+    aeron->addPublicationAsync(channel, stream_id);
 }
 
-TEST_F(WrapperSystemTest, shouldManuallyFreeAsyncPublicationIfNotPolledConductor)
+TEST_F(WrapperSystemTest, asyncPublicationIsAutomaticallyFreedWhenAeronIsClosedConductor)
 {
     Context ctx;
     ctx.useConductorAgentInvoker(false);
@@ -216,8 +215,6 @@ TEST_F(WrapperSystemTest, shouldManuallyFreeAsyncPublicationIfNotPolledConductor
     // wait for addPublicationAsync to complete
     int64_t counterId = aeron->addCounter(1000, nullptr, 0, "test");
     WAIT_FOR_NON_NULL(counter, aeron->findCounter(counterId));
-
-    aeron_async_cmd_free(async); // it is safe to delete now since client conductor processed this command
 }
 
 TEST_F(WrapperSystemTest, shouldRemovePendingAsyncExclusivePublicationUponError)
@@ -539,10 +536,10 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
     WAIT_FOR_NON_NULL(subscription, aeron->findSubscription(registration_id));
 
     int64_t addDest1RegistrationId = subscription->addDestination(dest1Uri);
-    auto addDest3Async = subscription->addDestinationAsync(dest3Uri);
+    subscription->addDestinationAsync(dest3Uri);
     int64_t addDest2RegistrationId = subscription->addDestination(dest2Uri);
 
-    auto removeDest1Async = subscription->removeDestinationAsync(dest1Uri);
+    subscription->removeDestinationAsync(dest1Uri);
     int64_t removeDest2RegistrationId = subscription->removeDestination(dest2Uri);
     int64_t removeDest3RegistrationId = subscription->removeDestination(dest3Uri);
 
@@ -551,10 +548,6 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
 
     WAIT_FOR(subscription->findDestinationResponse(addDest2RegistrationId));
     WAIT_FOR(subscription->findDestinationResponse(removeDest3RegistrationId));
-
-    // safe to delete after commands were processed by the client conductor thread
-    aeron_async_cmd_free(addDest3Async);
-    aeron_async_cmd_free(removeDest1Async);
 }
 
 TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreedPublication)
@@ -574,10 +567,10 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
     WAIT_FOR_NON_NULL(publication, aeron->findPublication(registration_id));
 
     int64_t addDest1RegistrationId = publication->addDestination(dest1Uri);
-    auto addDest3Async = publication->addDestinationAsync(dest3Uri);
+    publication->addDestinationAsync(dest3Uri);
     int64_t addDest2RegistrationId = publication->addDestination(dest2Uri);
 
-    auto removeDest1Async = publication->removeDestinationAsync(dest1Uri);
+    publication->removeDestinationAsync(dest1Uri);
     int64_t removeDest2RegistrationId = publication->removeDestination(dest2Uri);
     int64_t removeDest3RegistrationId = publication->removeDestination(dest3Uri);
 
@@ -586,10 +579,6 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
 
     WAIT_FOR(publication->findDestinationResponse(addDest2RegistrationId));
     WAIT_FOR(publication->findDestinationResponse(removeDest3RegistrationId));
-
-    // safe to delete after commands were processed by the client conductor thread
-    aeron_async_cmd_free(addDest3Async);
-    aeron_async_cmd_free(removeDest1Async);
 }
 
 TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreedExclusivePublication)
@@ -609,10 +598,10 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
     WAIT_FOR_NON_NULL(publication, aeron->findExclusivePublication(registration_id));
 
     int64_t addDest1RegistrationId = publication->addDestination(dest1Uri);
-    auto addDest3Async = publication->addDestinationAsync(dest3Uri);
+    publication->addDestinationAsync(dest3Uri);
     int64_t addDest2RegistrationId = publication->addDestination(dest2Uri);
 
-    auto removeDest1Async = publication->removeDestinationAsync(dest1Uri);
+    publication->removeDestinationAsync(dest1Uri);
     int64_t removeDest2RegistrationId = publication->removeDestination(dest2Uri);
     int64_t removeDest3RegistrationId = publication->removeDestination(dest3Uri);
 
@@ -621,8 +610,4 @@ TEST_F(WrapperSystemTest, nonPolledPendingAsyncDestinationsAreAutomaticallyFreed
 
     WAIT_FOR(publication->findDestinationResponse(addDest2RegistrationId));
     WAIT_FOR(publication->findDestinationResponse(removeDest3RegistrationId));
-
-    // safe to delete after commands were processed by the client conductor thread
-    aeron_async_cmd_free(addDest3Async);
-    aeron_async_cmd_free(removeDest1Async);
 }

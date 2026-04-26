@@ -3173,9 +3173,16 @@ TEST_F(AeronCArchiveIdTest, shouldApplyDefaultParametersToRequestAndResponseChan
     aeron_archive_context_set_control_response_channel(m_ctx, "aeron:udp?endpoint=127.0.0.1:0");
     aeron_t aeron = {};
     aeron.conductor.control_protocol_version = 0;
-    const size_t buffer_capacity = 128 + AERON_RB_TRAILER_LENGTH;
-    auto *buffer = new uint8_t[buffer_capacity];
-    ASSERT_EQ_ERR(0, aeron_mpsc_rb_init(&aeron.conductor.to_driver_buffer, buffer, buffer_capacity));
+    aeron.conductor.invoker_mode = true;
+    aeron.conductor.nano_clock = aeron_nano_clock;
+    const size_t buffer_capacity = 1024 + AERON_RB_TRAILER_LENGTH;
+    uint8_t *buffer;
+    size_t offset;
+    ASSERT_EQ_ERR(0, aeron_alloc_aligned((void**)&buffer, &offset, buffer_capacity, AERON_CACHE_LINE_LENGTH));
+    ASSERT_EQ_ERR(0, aeron_mpsc_rb_init(&aeron.conductor.to_driver_buffer, buffer + offset, buffer_capacity));
+    aeron_mpsc_concurrent_array_queue_t command_queue;
+    ASSERT_EQ_ERR(0, aeron_mpsc_concurrent_array_queue_init(&command_queue, AERON_CLIENT_COMMAND_QUEUE_CAPACITY));
+    aeron.conductor.command_queue = &command_queue;
     aeron_archive_context_set_aeron(m_ctx, &aeron);
     aeron_archive_context_set_error_handler(m_ctx, error_handler, nullptr);
     aeron_archive_context_set_control_term_buffer_length(m_ctx, 256 * 1024);
@@ -3207,7 +3214,9 @@ TEST_F(AeronCArchiveIdTest, shouldApplyDefaultParametersToRequestAndResponseChan
     EXPECT_EQ(0, aeron_uri_string_builder_close(&response_channel));
 
     EXPECT_EQ(0, aeron_archive_context_close(m_ctx));
-    delete[] buffer;
+    aeron_client_conductor_on_close(&aeron.conductor);
+    aeron_mpsc_concurrent_array_queue_close(&command_queue);
+    aeron_free(buffer);
 }
 
 TEST_F(AeronCArchiveIdTest, shouldNotApplyDefaultParametersToRequestAndResponseChannelsIfTheyAreSetExplicitly)
@@ -3218,9 +3227,16 @@ TEST_F(AeronCArchiveIdTest, shouldNotApplyDefaultParametersToRequestAndResponseC
     aeron_archive_context_set_control_response_channel(m_ctx, "aeron:ipc?term-length=128k|mtu=4096|sparse=true|alias=response");
     aeron_t aeron = {};
     aeron.conductor.control_protocol_version = 0;
-    const size_t buffer_capacity = 128 + AERON_RB_TRAILER_LENGTH;
-    auto *buffer = new uint8_t[buffer_capacity];
-    ASSERT_EQ_ERR(0, aeron_mpsc_rb_init(&aeron.conductor.to_driver_buffer, buffer, buffer_capacity));
+    aeron.conductor.invoker_mode = true;
+    aeron.conductor.nano_clock = aeron_nano_clock;
+    const size_t buffer_capacity = 1024 + AERON_RB_TRAILER_LENGTH;
+    uint8_t *buffer;
+    size_t offset;
+    ASSERT_EQ_ERR(0, aeron_alloc_aligned((void**)&buffer, &offset, buffer_capacity, AERON_CACHE_LINE_LENGTH));
+    ASSERT_EQ_ERR(0, aeron_mpsc_rb_init(&aeron.conductor.to_driver_buffer, buffer + offset, buffer_capacity));
+    aeron_mpsc_concurrent_array_queue_t command_queue;
+    ASSERT_EQ_ERR(0, aeron_mpsc_concurrent_array_queue_init(&command_queue, AERON_CLIENT_COMMAND_QUEUE_CAPACITY));
+    aeron.conductor.command_queue = &command_queue;
     aeron_archive_context_set_aeron(m_ctx, &aeron);
     aeron_archive_context_set_error_handler(m_ctx, error_handler, nullptr);
     aeron_archive_context_set_control_term_buffer_length(m_ctx, 256 * 1024);
@@ -3259,7 +3275,9 @@ TEST_F(AeronCArchiveIdTest, shouldNotApplyDefaultParametersToRequestAndResponseC
     EXPECT_EQ(0, aeron_uri_string_builder_close(&response_channel));
 
     EXPECT_EQ(0, aeron_archive_context_close(m_ctx));
-    delete[] buffer;
+    aeron_client_conductor_on_close(&aeron.conductor);
+    aeron_mpsc_concurrent_array_queue_close(&command_queue);
+    aeron_free(buffer);
 }
 
 TEST_F(AeronCArchiveIdTest, shouldNotSetSessionIdOnControlRequestAndReponseChannelsIfControlModeResponseIsUsed)

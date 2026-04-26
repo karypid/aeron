@@ -47,6 +47,18 @@ option and is propagated across as this needs to be consistent across both agent
 NOTE: These callbacks should only be used to signal resource availability, i.e. the polling of the async struct should
 be done on the application thread.
 
+* **Breaking:** **[Client/C]** Removed `aeron_async_cmd_free` method.
++
+[NOTE]
+====
+Async structs (e.g. `aeron_async_add_subscription_t`) are freed automatically when:
+
+* poll call (e.g. `aeron_async_add_subscription_poll`) completes, i.e. resource is created, errored or timed out.
+* resource creation is canceled without polling (e.g. `aeron_async_add_subscription_cancel`).
+* resource removal operation is invoked without polling (e.g. `aeron_async_remove_subscription`).
+* `aeron_client_t` is closed.
+====
+
 * **Breaking:** **[Client/Java]** Removed `registrationId` parameter from the `io.aeron.Counter` constructor.
 
 * **[Client/C]**: Added API to cancel async add operations:

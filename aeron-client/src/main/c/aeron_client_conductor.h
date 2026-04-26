@@ -48,7 +48,7 @@ typedef enum aeron_client_managed_resource_type_en
     AERON_CLIENT_MANAGED_RESOURCE_TYPE_COUNTER,
     AERON_CLIENT_MANAGED_RESOURCE_TYPE_STATIC_COUNTER,
     AERON_CLIENT_MANAGED_RESOURCE_TYPE_DESTINATION,
-    AERON_CLIENT_MANAGED_RESOURCE_TYPE_NEXT_AVAILABLE_SESSION_ID,
+    AERON_CLIENT_MANAGED_RESOURCE_TYPE_NEXT_AVAILABLE_SESSION_ID
 }
 aeron_client_managed_resource_type_t;
 
@@ -403,5 +403,10 @@ inline bool aeron_client_conductor_is_closed(aeron_client_conductor_t *conductor
     AERON_GET_ACQUIRE(is_closed, conductor->is_closed);
     return is_closed;
 }
+
+int aeron_client_conductor_async_resource_poll(
+    void **resource,
+    aeron_client_managed_resource_type_t resource_type,
+    aeron_client_registering_resource_t *async);
 
 #endif //AERON_C_CLIENT_CONDUCTOR_H

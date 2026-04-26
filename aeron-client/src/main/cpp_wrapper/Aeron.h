@@ -95,21 +95,6 @@ public:
         aeron_close(m_aeron);
         aeron_context_close(m_aeron_context);
 
-        for (const std::pair<const std::int64_t, AsyncAddCounter *>& e : m_pendingCounters)
-        {
-            aeron_async_cmd_free(e.second);
-        }
-
-        for (const std::pair<const std::int64_t, AsyncAddPublication *>& e : m_pendingPublications)
-        {
-            aeron_async_cmd_free(e.second);
-        }
-
-        for (const std::pair<const std::int64_t, AsyncAddExclusivePublication *>& e : m_pendingExclusivePublications)
-        {
-            aeron_async_cmd_free(e.second);
-        }
-
         for (const std::pair<const std::int64_t, AsyncAddSubscription *>& e : m_pendingSubscriptions)
         {
             delete e.second;

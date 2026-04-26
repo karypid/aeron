@@ -571,7 +571,7 @@ TEST_F(ClientConductorTest, shouldErrorOnAddExclusivePublicationFromDriverTimeou
     ASSERT_EQ(aeron_async_add_exclusive_publication_poll(&publication, async), 0) << aeron_errmsg();
     ASSERT_TRUE(nullptr == publication);
 
-    doWorkForNs((m_context->driver_timeout_ms + 1000) * 1000000);
+    doWorkForNs((static_cast<int64_t>(m_context->driver_timeout_ms) + 1000) * 1000000);
 
     ASSERT_EQ(aeron_async_add_exclusive_publication_poll(&publication, async), -1);
     ASSERT_EQ(-AERON_CLIENT_ERROR_DRIVER_TIMEOUT, aeron_errcode());
@@ -1263,7 +1263,62 @@ TEST_F(ClientConductorTest, shouldReturnRandomSessionIdIfControlProtolVersionNot
     ASSERT_NE(nextSessionId, nextSessionId2);
 }
 
-TEST_F(ClientConductorTest, asyncPublicationResourceMustBeExplicitlyFreedIfPollAbandonedBeforeCompletion)
+TEST_F(ClientConductorTest, shouldNotLeakAsyncResourceWhenCallingNextSessionIdAndWrongControlProtocolVersionInvoker)
+{
+    aeron_async_get_next_available_session_id_t *async = nullptr;
+
+    m_conductor.invoker_mode = true;
+    m_conductor.control_protocol_version = 1;
+
+    const int32_t streamId = 43;
+    ASSERT_EQ(aeron_client_conductor_async_get_next_available_session_id(&async, &m_conductor, streamId), 0);
+    ASSERT_EQ(streamId, async->stream_id);
+    ASSERT_EQ(AERON_CLIENT_REGISTRATION_STATUS_REGISTERED, async->registration_status);
+    ASSERT_NE(0, async->resource.next_session_id);
+}
+
+TEST_F(ClientConductorTest, shouldNotLeakAsyncResourceWhenCallingNextSessionIdAndWrongControlProtocolVersionConductor)
+{
+    aeron_async_get_next_available_session_id_t *async = nullptr;
+
+    m_conductor.invoker_mode = false;
+    m_conductor.control_protocol_version = 1;
+
+    const int32_t streamId = 43;
+    ASSERT_EQ(aeron_client_conductor_async_get_next_available_session_id(&async, &m_conductor, streamId), 0);
+    ASSERT_EQ(streamId, async->stream_id);
+    ASSERT_EQ(AERON_CLIENT_REGISTRATION_STATUS_AWAITING, async->registration_status);
+}
+
+TEST_F(ClientConductorTest, shouldNotLeakAsyncResourceWhenCallingNextSessionIdWithCorrectControlProtocolVersionInvoker)
+{
+    aeron_async_get_next_available_session_id_t *async = nullptr;
+
+    m_conductor.invoker_mode = true;
+    m_conductor.control_protocol_version = aeron_semantic_version_compose(
+        AERON_CONTROL_PROTOCOL_MAJOR_VERSION, AERON_CONTROL_PROTOCOL_MINOR_VERSION, AERON_CONTROL_PROTOCOL_PATCH_VERSION);
+
+    const int32_t streamId = 43;
+    ASSERT_EQ(aeron_client_conductor_async_get_next_available_session_id(&async, &m_conductor, streamId), 0);
+    ASSERT_EQ(streamId, async->stream_id);
+    ASSERT_EQ(AERON_CLIENT_REGISTRATION_STATUS_AWAITING, async->registration_status);
+}
+
+TEST_F(ClientConductorTest, shouldNotLeakAsyncResourceWhenCallingNextSessionIdWithCorrectControlProtocolVersion)
+{
+    aeron_async_get_next_available_session_id_t *async = nullptr;
+
+    m_conductor.invoker_mode = false;
+    m_conductor.control_protocol_version = aeron_semantic_version_compose(
+        AERON_CONTROL_PROTOCOL_MAJOR_VERSION, AERON_CONTROL_PROTOCOL_MINOR_VERSION, AERON_CONTROL_PROTOCOL_PATCH_VERSION);
+
+    const int32_t streamId = 43;
+    ASSERT_EQ(aeron_client_conductor_async_get_next_available_session_id(&async, &m_conductor, streamId), 0);
+    ASSERT_EQ(streamId, async->stream_id);
+    ASSERT_EQ(AERON_CLIENT_REGISTRATION_STATUS_AWAITING, async->registration_status);
+}
+
+TEST_F(ClientConductorTest, asyncPublicationResourceIsAutomaticallyFreedUponClientConductorClose)
 {
     aeron_async_add_publication_t *async = nullptr;
     aeron_publication_t *publication = nullptr;
@@ -1273,11 +1328,9 @@ TEST_F(ClientConductorTest, asyncPublicationResourceMustBeExplicitlyFreedIfPollA
 
     EXPECT_EQ(aeron_async_add_publication_poll(&publication, async), 0) << aeron_errmsg();
     EXPECT_EQ(nullptr, publication);
-
-    aeron_async_cmd_free(async);
 }
 
-TEST_F(ClientConductorTest, asyncExclusivePublicationResourceMustBeExplicitlyFreedIfPollAbandonedBeforeCompletion)
+TEST_F(ClientConductorTest, asyncExclusivePublicationResourceIsAutomaticallyFreedUponClientConductorClose)
 {
     aeron_async_add_exclusive_publication_t *async = nullptr;
     aeron_exclusive_publication_t *publication = nullptr;
@@ -1287,11 +1340,9 @@ TEST_F(ClientConductorTest, asyncExclusivePublicationResourceMustBeExplicitlyFre
 
     EXPECT_EQ(aeron_async_add_exclusive_publication_poll(&publication, async), 0) << aeron_errmsg();
     EXPECT_EQ(nullptr, publication);
-
-    aeron_async_cmd_free(async);
 }
 
-TEST_F(ClientConductorTest, asyncSubscriptionResourceMustBeExplicitlyFreedIfPollAbandonedBeforeCompletion)
+TEST_F(ClientConductorTest, asyncSubscriptionResourceIsAutomaticallyFreedUponClientConductorClose)
 {
     aeron_async_add_subscription_t *async = nullptr;
     aeron_subscription_t *subscription = nullptr;
@@ -1301,11 +1352,9 @@ TEST_F(ClientConductorTest, asyncSubscriptionResourceMustBeExplicitlyFreedIfPoll
 
     EXPECT_EQ(aeron_async_add_subscription_poll(&subscription, async), 0) << aeron_errmsg();
     EXPECT_EQ(nullptr, subscription);
-
-    aeron_async_cmd_free(async);
 }
 
-TEST_F(ClientConductorTest, asyncCounterResourceMustBeExplicitlyFreedIfPollAbandonedBeforeCompletion)
+TEST_F(ClientConductorTest, asyncCounterResourceIsAutomaticallyFreedUponClientConductorClose)
 {
     aeron_async_add_counter_t *async = nullptr;
     aeron_counter_t *counter = nullptr;
@@ -1315,8 +1364,6 @@ TEST_F(ClientConductorTest, asyncCounterResourceMustBeExplicitlyFreedIfPollAband
 
     EXPECT_EQ(aeron_async_add_counter_poll(&counter, async), 0) << aeron_errmsg();
     EXPECT_EQ(nullptr, counter);
-
-    aeron_async_cmd_free(async);
 }
 
 TEST_F(ClientConductorTest, shouldSetIdleStartegy)
@@ -1559,11 +1606,6 @@ TEST_F(ClientConductorTest, shouldAsyncCloseSubscriptionIfClientBufferIsFull)
     }
 
     EXPECT_TRUE(on_close_called);
-
-    for (auto async_session_id : pending_session_ids)
-    {
-        aeron_async_cmd_free(async_session_id);
-    }
 }
 
 TEST_F(ClientConductorTest, shouldAsyncClosePublication)
@@ -1661,11 +1703,6 @@ TEST_F(ClientConductorTest, shouldAsyncClosePublicationIfClientBufferIsFull)
     }
 
     EXPECT_TRUE(on_close_called);
-
-    for (auto async_session_id : pending_session_ids)
-    {
-        aeron_async_cmd_free(async_session_id);
-    }
 }
 
 TEST_F(ClientConductorTest, shouldAsyncCloseExclusivePublication)
@@ -1763,11 +1800,6 @@ TEST_F(ClientConductorTest, shouldAsyncCloseExclusivePublicationIfClientBufferIs
     }
 
     EXPECT_TRUE(on_close_called);
-
-    for (auto async_session_id : pending_session_ids)
-    {
-        aeron_async_cmd_free(async_session_id);
-    }
 }
 
 TEST_F(ClientConductorTest, shouldAsyncCloseCounter)
@@ -1865,11 +1897,6 @@ TEST_F(ClientConductorTest, shouldAsyncCloseCounterIfClientBufferIsFull)
     }
 
     EXPECT_TRUE(on_close_called);
-
-    for (auto async_session_id : pending_session_ids)
-    {
-        aeron_async_cmd_free(async_session_id);
-    }
 }
 
 TEST_F(ClientConductorTest, shouldNotifyOnCloseCompleteWhenClientConductorIsBeingClosedAndCounterIsForcefullyDeleted)
@@ -2011,11 +2038,6 @@ TEST_F(ClientConductorTest, shouldAsyncCloseStaticCounterIfClientBufferIsFull)
     EXPECT_TRUE(on_close_called);
     EXPECT_EQ(nullptr, aeron_int64_to_ptr_hash_map_get(&m_conductor.resource_by_id_map, correlation_id));
     EXPECT_EQ(nullptr, aeron_int64_to_ptr_hash_map_get(&m_conductor.resource_by_id_map, registration_id));
-
-    for (auto async_session_id : pending_session_ids)
-    {
-        aeron_async_cmd_free(async_session_id);
-    }
 }
 
 TEST_F(ClientConductorTest, shouldNotCloseStaticCounterWhenConductorIsClosed)
@@ -2368,7 +2390,7 @@ TEST_F(ClientConductorTest, shouldSupportConcurrentAsyncRemoveResourceFromMultip
     std::vector<std::thread> producers;
     producers.reserve(kProducerThreads);
 
-    for (int t = 0; t < kProducerThreads; t++)
+    for (size_t t = 0; t < kProducerThreads; t++)
     {
         producers.emplace_back([&, t]()
         {
@@ -2378,7 +2400,7 @@ TEST_F(ClientConductorTest, shouldSupportConcurrentAsyncRemoveResourceFromMultip
             }
             for (int i = 0; i < kCmdsPerThread; i++)
             {
-                const int64_t registration_id = (int64_t)(t * kCmdsPerThread + i);
+                const auto registration_id = static_cast<int64_t>(t * kCmdsPerThread + i);
                 /* No registered resource behind these ids — the remove cmd will be a no-op
                  * for driver-side work, but the conductor still frees the cmd and fires
                  * on_complete. Exercises the MPSC offer + tag path from multiple producers. */

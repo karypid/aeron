@@ -60,11 +60,6 @@ private:
     const on_unavailable_image_t m_onUnavailableImage;
 
 public:
-    ~AsyncAddSubscription() noexcept
-    {
-        aeron_async_cmd_free(m_async);
-    }
-
     void static remove(void *clientd)
     {
         auto *addSubscription = static_cast<AsyncAddSubscription *>(clientd);
@@ -120,10 +115,7 @@ public:
             aeron_subscription_close(m_subscription, AsyncAddSubscription::remove, m_addSubscription);
         }
 
-        for (const std::pair<const std::int64_t, AsyncDestination *>& e : m_pendingDestinations)
-        {
-            aeron_async_cmd_free(e.second);
-        }
+        m_pendingDestinations.clear();
     }
 
     /**

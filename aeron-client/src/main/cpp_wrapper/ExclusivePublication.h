@@ -75,11 +75,7 @@ public:
     ~ExclusivePublication()
     {
         aeron_exclusive_publication_close(m_publication, nullptr, nullptr);
-
-        for (const std::pair<const std::int64_t, AsyncDestination *>& e : m_pendingDestinations)
-        {
-            aeron_async_cmd_free(e.second);
-        }
+        m_pendingDestinations.clear();
     }
 
     inline void revokeOnClose()
