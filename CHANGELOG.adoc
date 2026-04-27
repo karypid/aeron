@@ -4,9 +4,10 @@
 
 === New & Noteworthy
 
-* **[Archive]** Added `PersistentSubscription` to Aeron Archive for all languages (Java, C++ and C).
+* **[Archive]** Added `PersistentSubscriptions` to Aeron Archive for all languages (Java, C++ and C).
 +
-`PersistentSubscription` is an alternative to ReplayMerge with IPC and Spy support, plus a fallback mechanism for slow consumers.
+https://github.com/aeron-io/aeron/wiki/Persistent-Subscriptions[Persistent Subscriptions] is an alternative to
+ReplayMerge with IPC and Spy support, plus a fallback mechanism for slow consumers.
 
 * **Breaking:** **[Driver]** Async executor is now a single-threaded `Agent`.
 +
