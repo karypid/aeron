@@ -272,7 +272,7 @@ abstract class PersistentSubscriptionTest
             // to fall behind and drop off live.
             final MediaDriver.Context ctx = driverCtxTpl.clone()
                 .aeronDirectoryName(CommonContext.generateRandomDirName());
-            try (MediaDriver mediaDriver = MediaDriver.launch(ctx);
+            try (TestMediaDriver mediaDriver = TestMediaDriver.launch(ctx, systemTestWatcher);
                 Aeron aeron = Aeron.connect(
                     new Aeron.Context().aeronDirectoryName(mediaDriver.aeronDirectoryName())))
             {
@@ -1908,7 +1908,7 @@ abstract class PersistentSubscriptionTest
             // to fall behind and drop off live.
             final MediaDriver.Context ctx = driverCtxTpl.clone()
                 .aeronDirectoryName(CommonContext.generateRandomDirName());
-            try (MediaDriver mediaDriver = MediaDriver.launch(ctx);
+            try (TestMediaDriver mediaDriver = TestMediaDriver.launch(ctx, systemTestWatcher);
                 Aeron aeron = Aeron.connect(
                     new Aeron.Context().aeronDirectoryName(mediaDriver.aeronDirectoryName())))
             {
@@ -1988,7 +1988,7 @@ abstract class PersistentSubscriptionTest
             // to fall behind and drop off live.
             final MediaDriver.Context ctx = driverCtxTpl.clone()
                 .aeronDirectoryName(CommonContext.generateRandomDirName());
-            try (MediaDriver mediaDriver = MediaDriver.launch(ctx);
+            try (TestMediaDriver mediaDriver = TestMediaDriver.launch(ctx, systemTestWatcher);
                 Aeron aeron = Aeron.connect(
                     new Aeron.Context().aeronDirectoryName(mediaDriver.aeronDirectoryName())))
             {
@@ -2037,7 +2037,7 @@ abstract class PersistentSubscriptionTest
 
         final MediaDriver.Context ctx = driverCtxTpl.clone()
             .aeronDirectoryName(CommonContext.generateRandomDirName());
-        final MediaDriver mediaDriver = addCloseable(MediaDriver.launch(ctx));
+        final TestMediaDriver mediaDriver = addCloseable(TestMediaDriver.launch(ctx, systemTestWatcher));
         final Aeron aeron = addCloseable(
             Aeron.connect(new Aeron.Context().aeronDirectoryName(mediaDriver.aeronDirectoryName())));
 
@@ -2104,7 +2104,7 @@ abstract class PersistentSubscriptionTest
 
         final MediaDriver.Context ctx = driverCtxTpl.clone()
             .aeronDirectoryName(CommonContext.generateRandomDirName());
-        final MediaDriver mediaDriver = addCloseable(MediaDriver.launch(ctx));
+        final TestMediaDriver mediaDriver = addCloseable(TestMediaDriver.launch(ctx, systemTestWatcher));
         final Aeron aeron = addCloseable(
             Aeron.connect(new Aeron.Context().aeronDirectoryName(mediaDriver.aeronDirectoryName())));
 
