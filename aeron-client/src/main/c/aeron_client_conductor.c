@@ -1433,13 +1433,27 @@ static int aeron_client_conductor_check_lingering_resources(aeron_client_conduct
 static int aeron_client_conductor_check_registering_resources(aeron_client_conductor_t *conductor, int64_t now_ns)
 {
     int work_count = 0;
-    for (size_t i = 0, size = conductor->registering_resources.length; i <  size; i++)
+    for (size_t size = conductor->registering_resources.length, last_index = size - 1, i = size, index = i - 1; i > 0; i--, index--)
     {
-        aeron_client_registering_resource_t *resource = conductor->registering_resources.array[i].resource;
+        aeron_client_registering_resource_t *resource = conductor->registering_resources.array[index].resource;
+
         if (AERON_CLIENT_REGISTRATION_STATUS_AWAITING == resource->registration_status &&
             now_ns > resource->registration_deadline_ns)
         {
             AERON_SET_RELEASE(resource->registration_status, AERON_CLIENT_REGISTRATION_STATUS_TIMED_OUT);
+            work_count++;
+        }
+        else if (AERON_CLIENT_REGISTRATION_STATUS_POLL_COMPLETED == resource->registration_status)
+        {
+            aeron_array_fast_unordered_remove(
+                (uint8_t*)conductor->registering_resources.array,
+                sizeof(aeron_client_registering_resource_entry_t),
+                index,
+                last_index);
+            conductor->registering_resources.length--;
+            last_index--;
+
+            aeron_client_conductor_async_resource_free(resource);
             work_count++;
         }
     }
@@ -2705,33 +2719,6 @@ int aeron_client_conductor_do_work(aeron_client_conductor_t *conductor)
     return work_count;
 }
 
-static void aeron_client_conductor_async_resource_remove_and_free(aeron_client_registering_resource_t *async)
-{
-    if (NULL != async)
-    {
-        aeron_client_conductor_t *conductor = async->command_base.item;
-        assert(NULL != conductor && "Incomplete async command");
-
-        for (size_t size = conductor->registering_resources.length, last_index = size - 1, i = size, index = i - 1; i > 0; i--, index--)
-        {
-            const aeron_client_registering_resource_t *async_resource = conductor->registering_resources.array[index].resource;
-            if (async_resource == async)
-            {
-                aeron_array_fast_unordered_remove(
-                                (uint8_t*)conductor->registering_resources.array,
-                                sizeof(aeron_client_registering_resource_entry_t),
-                                index,
-                                last_index);
-                conductor->registering_resources.length--;
-                last_index--;
-                break;
-            }
-        }
-
-        aeron_client_conductor_async_resource_free(async);
-    }
-}
-
 void aeron_client_conductor_on_close(aeron_client_conductor_t *conductor)
 {
     aeron_client_conductor_notify_close_handlers(conductor);
@@ -3706,7 +3693,7 @@ int aeron_client_conductor_async_resource_poll(
                 aeron_client_conductor_managed_resource_type_to_string(resource_type),
                 (int)async->error_message_length,
                 async->error_message);
-            aeron_client_conductor_async_resource_remove_and_free(async);
+            AERON_SET_RELEASE(async->registration_status, AERON_CLIENT_REGISTRATION_STATUS_POLL_COMPLETED);
             return -1;
         }
 
@@ -3733,7 +3720,7 @@ int aeron_client_conductor_async_resource_poll(
                 default:
                     break;
             }
-            aeron_client_conductor_async_resource_remove_and_free(async);
+            AERON_SET_RELEASE(async->registration_status, AERON_CLIENT_REGISTRATION_STATUS_POLL_COMPLETED);
             return 1;
         }
 
@@ -3743,7 +3730,7 @@ int aeron_client_conductor_async_resource_poll(
                 -AERON_CLIENT_ERROR_DRIVER_TIMEOUT,
                 "async_add_%s no response from media driver",
                 aeron_client_conductor_managed_resource_type_to_string(resource_type));
-            aeron_client_conductor_async_resource_remove_and_free(async);
+            AERON_SET_RELEASE(async->registration_status, AERON_CLIENT_REGISTRATION_STATUS_POLL_COMPLETED);
             return -1;
         }
 
@@ -3754,7 +3741,7 @@ int aeron_client_conductor_async_resource_poll(
                 "async_add_%s unknown registration_status: %d",
                  aeron_client_conductor_managed_resource_type_to_string(resource_type),
                  registration_status);
-            aeron_client_conductor_async_resource_remove_and_free(async);
+            AERON_SET_RELEASE(async->registration_status, AERON_CLIENT_REGISTRATION_STATUS_POLL_COMPLETED);
             return -1;
         }
     }
