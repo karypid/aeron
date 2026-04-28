@@ -269,6 +269,8 @@ but is now explicitly enforced via the ClusteredServiceContainer.Configuration.M
 * Increase default cycle thresholds to 100ms as the previous value of 1ms was too short and their counts kept ticking up under normal conditions.
 * **[Archive]** Fix `CATALOG_RESIZE` debug logging.
 * **[C]** Renamed `aeron_archive_proxy_set_control_esssion_id` to `aeron_archive_proxy_set_control_session_id`.
+* **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.4.1[Agrona 2.4.1].
+* **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.38.1[SBE 1.38.1].
 * **[Java]** Upgrade to `Gradle` 9.4.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.8.
 * **[Java]** Upgrade to `Mockito` 5.23.0.
