@@ -2,6 +2,13 @@
 
 == 1.52.0 (Unreleased)
 
+* [Driver/C] Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
+* [Client] Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
+image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
+* [C] Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
+* [Client/Java] Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
+* [Client/C] Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
+
 == 1.51.0 (2026-04-28)
 
 === New & Noteworthy
@@ -86,6 +93,14 @@ object is destroyed.
 ** `aeron_async_remove_publication`
 ** `aeron_async_remove_exclusive_publication`
 ** `aeron_async_remove_counter`
+
+=== Known issues
+
+* [Driver/C] Bootstrap neighbor resolution is disabled out of the box due to default value not being set.
++
+TIP: The workaround is to explicitly set `aeron.driver.resolver.bootstrap.neighbor.resolution.interval` explicitly, e.g.
+`-Daeron.driver.resolver.bootstrap.neighbor.resolution.interval=10s` or
+`AERON_DRIVER_RESOLVER_BOOTSTRAP_NEIGHBOR_RESOLUTION_INTERVAL=10s`.
 
 === Changelog
 * **[C]** Removed `aeron_async_cmd_free` API, i.e. free async structs automatically when:
