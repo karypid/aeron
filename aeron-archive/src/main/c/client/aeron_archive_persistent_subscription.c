@@ -809,7 +809,7 @@ static void aeron_archive_persistent_subscription_on_archive_disconnected(void *
     if (AWAIT_ARCHIVE_CONNECTION == state ||
         ATTEMPT_SWITCH == state ||
         LIVE == state ||
-        FAILED== state )
+        FAILED == state)
     {
         return;
     }
@@ -1689,7 +1689,6 @@ static int aeron_archive_persistent_subscription_await_request_publication(
         persistent_subscription->request_publication,
         AERON_ARCHIVE_MESSAGE_RETRY_ATTEMPTS_DEFAULT) < 0)
     {
-
         aeron_archive_persistent_subscription_transition(persistent_subscription, FAILED);
 
         aeron_archive_persistent_subscription_on_terminal_error(
@@ -2141,7 +2140,6 @@ static int aeron_archive_persistent_subscription_await_live(
 
             if (AERON_ERROR_CODE_RESOURCE_TEMPORARILY_UNAVAILABLE == errcode)
             {
-
                 aeron_archive_persistent_subscription_transition(persistent_subscription, ADD_LIVE_SUBSCRIPTION);
 
                 if (NULL != persistent_subscription->listener.on_error)
@@ -2155,7 +2153,6 @@ static int aeron_archive_persistent_subscription_await_live(
             else
             {
                 aeron_archive_persistent_subscription_transition(persistent_subscription, FAILED);
-
 
                 aeron_archive_persistent_subscription_on_terminal_error(
                     persistent_subscription,
