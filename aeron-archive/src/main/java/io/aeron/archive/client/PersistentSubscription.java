@@ -201,7 +201,7 @@ public final class PersistentSubscription implements AutoCloseable
      * <p>
      * If an error occurs during polling, the {@link PersistentSubscriptionListener} will be notified.
      * Exceptions thrown from the {@link FragmentHandler} will be passed to the
-     * {@link Aeron.Context#subscriberErrorHandler} for the Aeron instance.
+     * {@link Aeron.Context#subscriberErrorHandler()} for the Aeron instance.
      *
      * @param fragmentHandler the handler to receive assembled messages if any are available.
      * @param fragmentLimit the maximum number of fragments to be processed during the poll operation.
@@ -230,7 +230,7 @@ public final class PersistentSubscription implements AutoCloseable
      * <p>
      * If an error occurs during polling, the {@link PersistentSubscriptionListener} will be notified.
      * Exceptions thrown from the {@link FragmentHandler} will be passed to the
-     * {@link Aeron.Context#subscriberErrorHandler} for the Aeron instance.
+     * {@link Aeron.Context#subscriberErrorHandler()} for the Aeron instance.
      *
      * @param fragmentHandler the handler to receive assembled messages if any are available.
      * @param fragmentLimit the maximum number of fragments to be processed during the poll operation.
@@ -1107,10 +1107,11 @@ public final class PersistentSubscription implements AutoCloseable
     private void onLiveImageDeadlineBreached()
     {
         liveImageDeadlineBreached = true;
-        listener.onError(new AeronEvent("No image became available on the live subscription within " +
-                                        SystemUtil.formatDuration(messageTimeoutNs) + ". This could be " +
-                                        "caused by the publisher being down, or by a misconfiguration of the " +
-                                        "subscriber or a firewall between them."));
+        listener.onError(new AeronEvent(
+            "No image became available on the live subscription within " +
+            SystemUtil.formatDuration(messageTimeoutNs) + ". This could be " +
+            "caused by the publisher being down, or by a misconfiguration of the " +
+            "subscriber or a firewall between them."));
     }
 
     private int attemptSwitch(final int fragmentLimit, final boolean isControlled)
