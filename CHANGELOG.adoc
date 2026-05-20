@@ -11,6 +11,7 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * [Driver/C] Support using CGroups based cpusets when setting thread affinity. Validate that the cpuset has a sane configuration.
 * [Driver/C] Support setting thread affinity on the async agent (used for name resolution, etc.)
 * **[Java]** Upgrade to `Gradle` 9.5.1.
+* **[Java]** Upgrade to `JUnit` 6.1.0.
 
 == 1.51.0 (2026-04-28)
 
