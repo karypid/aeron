@@ -27,7 +27,6 @@ import io.aeron.driver.media.ReceiveChannelEndpointThreadLocals;
 import io.aeron.driver.media.UdpChannel;
 import io.aeron.driver.media.WildcardPortManager;
 import io.aeron.driver.status.DutyCycleStallTracker;
-import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.driver.status.SystemCounters;
 import io.aeron.logbuffer.HeaderWriter;
 import io.aeron.logbuffer.LogBufferDescriptor;
@@ -36,11 +35,11 @@ import io.aeron.protocol.StatusMessageFlyweight;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
-import org.agrona.ErrorHandler;
 import org.agrona.IoUtil;
 import org.agrona.concurrent.AgentInvoker;
 import org.agrona.concurrent.CachedEpochClock;
 import org.agrona.concurrent.CachedNanoClock;
+import org.agrona.concurrent.CountedErrorHandler;
 import org.agrona.concurrent.ManyToOneConcurrentLinkedQueue;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.ringbuffer.ManyToOneRingBuffer;
@@ -164,8 +163,7 @@ class DriverConductorTest
     private final RingBuffer toDriverCommands = spy(new ManyToOneRingBuffer(new UnsafeBuffer(conductorBuffer)));
     private final ClientProxy mockClientProxy = mock(ClientProxy.class);
 
-    private final ErrorHandler mockErrorHandler = mock(ErrorHandler.class);
-    private final AtomicCounter mockErrorCounter = mock(AtomicCounter.class);
+    private final CountedErrorHandler mockErrorHandler = mock(CountedErrorHandler.class);
 
     private final SenderProxy senderProxy = mock(SenderProxy.class);
     private final ReceiverProxy receiverProxy = mock(ReceiverProxy.class);
@@ -204,9 +202,6 @@ class DriverConductorTest
         spyCountersManager = spy(Tests.newCountersManager(BUFFER_LENGTH));
         spySystemCounters = spy(new SystemCounters(spyCountersManager));
 
-        when(spySystemCounters.get(SystemCounterDescriptor.ERRORS)).thenReturn(mockErrorCounter);
-        when(mockErrorCounter.appendToLabel(any())).thenReturn(mockErrorCounter);
-
         final DutyCycleStallTracker conductorDutyCycleTracker = new DutyCycleStallTracker(
             spySystemCounters.get(CONDUCTOR_MAX_CYCLE_TIME),
             spySystemCounters.get(CONDUCTOR_CYCLE_TIME_THRESHOLD_EXCEEDED),
@@ -226,6 +221,7 @@ class DriverConductorTest
             .multicastFlowControlSupplier(Configuration.multicastFlowControlSupplier())
             .driverCommandQueue(new ManyToOneConcurrentLinkedQueue<>())
             .errorHandler(mockErrorHandler)
+            .countedErrorHandler(mockErrorHandler)
             .logFactory(new TestLogFactory())
             .countersManager(spyCountersManager)
             .epochClock(epochClock)
@@ -647,7 +643,6 @@ class DriverConductorTest
         inOrder.verify(mockClientProxy).onError(anyLong(), eq(UNKNOWN_PUBLICATION), anyString());
         inOrder.verifyNoMoreInteractions();
 
-        verify(mockErrorCounter).increment();
         verify(mockErrorHandler).onError(any(Throwable.class));
     }
 
@@ -698,7 +693,6 @@ class DriverConductorTest
         verify(mockClientProxy).onError(anyLong(), eq(INVALID_CHANNEL), anyString());
         verify(mockClientProxy, never()).operationSucceeded(anyLong());
 
-        verify(mockErrorCounter).increment();
         verify(mockErrorHandler).onError(any(Throwable.class));
     }
 
@@ -1694,7 +1688,6 @@ class DriverConductorTest
         driverConductor.doWork();
 
         verify(mockClientProxy).onError(eq(correlationId), eq(GENERIC_ERROR), anyString());
-        verify(mockErrorCounter).increment();
         verify(mockErrorHandler).onError(any(Throwable.class));
     }
 
@@ -1713,7 +1706,6 @@ class DriverConductorTest
         driverConductor.doWork();
 
         verify(mockClientProxy).onError(eq(correlationId), eq(INVALID_CHANNEL), anyString());
-        verify(mockErrorCounter).increment();
         verify(mockErrorHandler).onError(any(Throwable.class));
     }
 

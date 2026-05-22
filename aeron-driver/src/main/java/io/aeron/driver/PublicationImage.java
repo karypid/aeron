@@ -254,7 +254,7 @@ public final class PublicationImage
         this.sourceIdentity = sourceIdentity;
         this.initialTermId = initialTermId;
         this.congestionControl = congestionControl;
-        this.errorHandler = ctx.errorHandler();
+        this.errorHandler = ctx.countedErrorHandler();
         this.lossReport = ctx.lossReport();
 
         this.nanoClock = ctx.nanoClock();

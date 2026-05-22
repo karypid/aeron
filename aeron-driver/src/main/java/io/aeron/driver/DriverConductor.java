@@ -110,7 +110,6 @@ import static io.aeron.driver.PublicationParams.getPublicationParams;
 import static io.aeron.driver.PublicationParams.validateMtuForSndbuf;
 import static io.aeron.driver.PublicationParams.validateSpiesSimulateConnection;
 import static io.aeron.driver.SubscriptionParams.validateInitialWindowForRcvBuf;
-import static io.aeron.driver.status.SystemCounterDescriptor.ERRORS;
 import static io.aeron.driver.status.SystemCounterDescriptor.FREE_FAILS;
 import static io.aeron.driver.status.SystemCounterDescriptor.IMAGES_REJECTED;
 import static io.aeron.driver.status.SystemCounterDescriptor.INVALID_PACKETS;
@@ -220,7 +219,6 @@ public final class DriverConductor implements Agent
     private final NetworkPublicationThreadLocals networkPublicationThreadLocals = new NetworkPublicationThreadLocals();
     private final MutableDirectBuffer tempBuffer;
     private final DataHeaderFlyweight defaultDataHeader = new DataHeaderFlyweight(createDefaultHeader(0, 0, 0));
-    private final AtomicCounter errorCounter;
     private final AtomicCounter imagesRejected;
     private final DutyCycleTracker dutyCycleTracker;
     private final AgentInvoker asyncTaskExecutorInvoker;
@@ -243,7 +241,6 @@ public final class DriverConductor implements Agent
         toDriverCommands = ctx.toDriverCommands();
         clientProxy = ctx.clientProxy();
         tempBuffer = ctx.tempBuffer();
-        errorCounter = ctx.systemCounters().get(ERRORS);
         imagesRejected = ctx.systemCounters().get(IMAGES_REJECTED);
         dutyCycleTracker = ctx.conductorDutyCycleTracker();
 
@@ -253,8 +250,7 @@ public final class DriverConductor implements Agent
         this.asyncTaskExecutorInvoker = asyncTaskExecutorInvoker;
 
         clientCommandAdapter = new ClientCommandAdapter(
-            errorCounter,
-            ctx.errorHandler(),
+            ctx.countedErrorHandler(),
             toDriverCommands,
             clientProxy,
             this);
@@ -2816,7 +2812,7 @@ public final class DriverConductor implements Agent
 
             if (resource.hasReachedEndOfLife())
             {
-                CloseHelper.close(ctx.errorHandler(), resource::close);
+                CloseHelper.close(ctx.countedErrorHandler(), resource::close);
                 endOfLifeResources.add(resource);
                 fastUnorderedRemove(list, i, lastIndex--);
             }
@@ -3135,7 +3131,6 @@ public final class DriverConductor implements Agent
 
     private void recordError(final Exception ex)
     {
-        ctx.errorHandler().onError(ex);
-        errorCounter.increment();
+        ctx.countedErrorHandler().onError(ex);
     }
 }

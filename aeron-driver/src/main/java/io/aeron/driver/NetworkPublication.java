@@ -267,7 +267,7 @@ public final class NetworkPublication
         }
 
         sendBuffers = rawLog.sliceTerms();
-        errorHandler = ctx.errorHandler();
+        errorHandler = ctx.countedErrorHandler();
 
         final int termLength = rawLog.termLength();
         termBufferLength = termLength;
