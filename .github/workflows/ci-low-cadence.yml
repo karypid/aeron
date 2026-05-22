@@ -89,7 +89,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Enable core dumps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -155,7 +156,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Build and Run Javadoc
         run: ./gradlew javadoc
         env:
@@ -189,7 +191,8 @@ jobs:
           echo "BUILD_JAVA_VERSION=${{ env.JAVA_VERSION }}" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Install compiler
         run: |
           echo 'Acquire::Retries "${INSTALL_COMPILER_RETRIES}";' | sudo tee -a /etc/apt/apt.conf.d/99retries
@@ -239,7 +242,8 @@ jobs:
           echo "BUILD_JAVA_VERSION=${{ env.JAVA_VERSION }}" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Install compiler
         run: |
           echo 'Acquire::Retries "${INSTALL_COMPILER_RETRIES}";' | sudo tee -a /etc/apt/apt.conf.d/99retries
@@ -301,7 +305,8 @@ jobs:
           echo "BUILD_JAVA_VERSION=${{ env.JAVA_VERSION }}" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Build
         run: cppbuild/cppbuild.ps1 --slow-system-tests --no-system-tests --no-unit-tests --c-warnings-as-errors --cxx-warnings-as-errors
       - name: Copy test logs
@@ -345,7 +350,8 @@ jobs:
           echo "BUILD_JAVA_VERSION=${{ env.JAVA_VERSION }}" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Install compiler
         run: |
           echo 'Acquire::Retries "${INSTALL_COMPILER_RETRIES}";' | sudo tee -a /etc/apt/apt.conf.d/99retries
@@ -395,7 +401,8 @@ jobs:
           echo "BUILD_JAVA_VERSION=${{ env.JAVA_VERSION }}" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-        cache-provider: basic
+        with:
+          cache-provider: basic
       - name: Install compiler
         run: |
           echo 'Acquire::Retries "${INSTALL_COMPILER_RETRIES}";' | sudo tee -a /etc/apt/apt.conf.d/99retries
