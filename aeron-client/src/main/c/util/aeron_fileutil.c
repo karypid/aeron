@@ -33,6 +33,8 @@
 #include "aeron_error.h"
 #include "aeron_fileutil.h"
 
+#include "aeron_alloc.h"
+
 #ifdef _MSC_VER
 #define AERON_FILE_SEP '\\'
 #else
@@ -756,6 +758,61 @@ bool aeron_file_exists(const char* path)
     return false;
 }
 
+int64_t aeron_ftell(void *stream)
+{
+    return (int64_t)_ftelli64((FILE *)stream);
+}
+
+void *aeron_open_file_append(const char *path)
+{
+    const int fd = open(path, _O_RDWR | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
+    if (-1 == fd)
+    {
+        AERON_SET_ERR(errno, "%s", "Failed to open logfile");
+        return NULL;
+    }
+
+    FILE *f = fdopen(fd, "a");
+    if (NULL == f)
+    {
+        AERON_SET_ERR(errno, "%s", "Failed to fdopen logfile");
+        return NULL;
+    }
+
+    return f;
+}
+
+const char *aeron_temp_dir(const char *dir_template)
+{
+    char temp_path[AERON_MAX_PATH];
+    GetTempPathA(AERON_MAX_PATH, temp_path);
+    char *path;
+
+    if (aeron_alloc((void **)&path, AERON_MAX_PATH) < 0)
+    {
+        AERON_APPEND_ERR("%s", "");
+        return NULL;
+    }
+
+    snprintf(path, AERON_MAX_PATH, "%s%s", temp_path, dir_template);
+    if (0 != _mktemp_s(path, strlen(path) + 1))
+    {
+        aeron_free(path);
+        AERON_SET_ERR(errno, "failed to create a temporary directory name: %s", dir_template);
+        return NULL;
+    }
+
+    if (!CreateDirectoryA(path, NULL))
+    {
+        aeron_free(path);
+        AERON_SET_ERR_WIN(GetLastError(), "failed to create a temporary directory: %s", dir_template);
+        return NULL;
+    }
+
+    return path;
+}
+
+
 #else
 #include <unistd.h>
 #include <sys/mman.h>
@@ -763,6 +820,7 @@ bool aeron_file_exists(const char* path)
 #include <ftw.h>
 #include <stdio.h>
 #include <pwd.h>
+#include <limits.h>
 
 static int aeron_mmap(aeron_mapped_file_t *mapping, int fd, bool pre_touch)
 {
@@ -837,6 +895,29 @@ bool aeron_file_exists(const char* path)
     return false;
 }
 
+int64_t aeron_ftell(void *stream)
+{
+    return (int64_t)ftello(stream);
+}
+
+void *aeron_open_file_append(const char *path)
+{
+    const int fd = open(path, O_RDWR | O_CREAT | O_APPEND, 0644);
+    if (-1 == fd)
+    {
+        AERON_SET_ERR(errno, "%s", "Failed to open logfile");
+        return NULL;
+    }
+
+    FILE *f = fdopen(fd, "a");
+    if (NULL == f)
+    {
+        AERON_SET_ERR(errno, "%s", "Failed to fdopen logfile");
+        return NULL;
+    }
+
+    return f;
+}
 
 static int unlink_func(const char *path, const struct stat *sb, int type_flag, struct FTW *ftw)
 {
@@ -957,6 +1038,27 @@ int aeron_open_file_rw(const char *path)
         return -1;
     }
     return fd;
+}
+
+const char *aeron_temp_dir(const char* dir_template)
+{
+    char *path;
+    if (aeron_alloc((void **)&path, AERON_MAX_PATH) < 0)
+    {
+        AERON_APPEND_ERR("%s", "");
+        return NULL;
+    }
+
+    snprintf(path, AERON_MAX_PATH, "%s/%s", P_tmpdir, dir_template);
+    const char *dirname = mkdtemp(path);
+    if (NULL == dirname)
+    {
+        aeron_free(path);
+        AERON_SET_ERR(errno, "failed to create a temporary directory: %s", dir_template);
+        return NULL;
+    }
+
+    return dirname;
 }
 #endif
 
@@ -1124,10 +1226,10 @@ size_t aeron_temp_filename(char *filename, size_t length)
 
     return strlen(filename);
 #else
-    char tmpdir[MAX_PATH + 1];
-    char tmpfile[MAX_PATH];
+    char tmpdir[AERON_MAX_PATH];
+    char tmpfile[AERON_MAX_PATH];
 
-    if (GetTempPath(MAX_PATH, &tmpdir[0]) > 0)
+    if (GetTempPath(AERON_MAX_PATH, &tmpdir[0]) > 0)
     {
         if (GetTempFileName(tmpdir, TEXT("aeron-c"), 101, &tmpfile[0]) != 0)
         {
@@ -1297,9 +1399,9 @@ bool aeron_raw_log_free(aeron_mapped_raw_log_t *mapped_raw_log, const char *file
 inline static const char *tmp_dir(void)
 {
 #if defined(_MSC_VER)
-    static char buff[MAX_PATH + 1];
+    static char buff[AERON_MAX_PATH];
 
-    if (GetTempPath(MAX_PATH, &buff[0]) > 0)
+    if (GetTempPath(AERON_MAX_PATH, &buff[0]) > 0)
     {
         return buff;
     }
