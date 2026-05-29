@@ -2,6 +2,10 @@
 
 == 1.52.0 (Unreleased)
 
+=== New & Noteworthy
+
+=== Changelog
+
 * [Driver/C] Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
 * [Client] Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
 image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
