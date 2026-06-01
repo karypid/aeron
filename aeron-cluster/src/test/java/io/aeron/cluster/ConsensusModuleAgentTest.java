@@ -488,7 +488,6 @@ class ConsensusModuleAgentTest
     void shouldDelegateHandlingToRegisteredExtension()
     {
         final ConsensusModuleExtension consensusModuleExtension = mock(ConsensusModuleExtension.class, "used adapter");
-        when(consensusModuleExtension.supportedSchemaId()).thenReturn(SCHEMA_ID);
         final TestClusterClock clock = new TestClusterClock(TimeUnit.MILLISECONDS);
         ctx.epochClock(clock.asEpochClock())
             .clusterClock(clock)
