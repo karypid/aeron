@@ -22,8 +22,9 @@ public interface DriverManagedResource
 {
     /**
      * Close resources that are not external.
+     * @param conductor to inform of any state transitions.
      */
-    void close();
+    void close(DriverConductor conductor);
 
     /**
      * Inform resource of timeNs passing and pass it DriverConductor to inform of any state transitions.

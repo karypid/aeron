@@ -29,6 +29,9 @@ enable/disable it separately (`aeron.driver.async.executor.enabled` was removed)
 +
 Thread name was changed from `aeron-executor` to `aeron-md-nra`.
 
+* **[Driver]** Creating/destroying exclusive publications with explicitly specified `session-id` now works without
+errors.
+
 * **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the
 deletion of segments.
 
@@ -59,6 +62,7 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[Client/Java]** Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
 * **[Client/C]** Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
 * **[Cluster]** Added VersionValidator interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
+* **[Driver/Java]** Allow immediate re-creation of an exclusive publication with fixed `session-id`.
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.

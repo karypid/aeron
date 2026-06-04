@@ -53,16 +53,27 @@ class SocketLifecycleTest
     private static final int PROPERTY_TEST_ITERATION_COUNT = 1000;
     private static final String PUBLISHER_MDC_URI = "aeron:udp?control-mode=dynamic|control=localhost:5001";
     private static final String PUBLISHER_UNICAST_URI = "aeron:udp?control=localhost:5000|endpoint=localhost:10000";
+    private static final String PUBLISHER_SESSION_SPECIFIC_UNICAST_URI =
+        "aeron:udp?control=localhost:6000|endpoint=localhost:20000|session-id=42";
     private static final String SUBSCRIBER_UNICAST_URI = "aeron:udp?endpoint=localhost:10000";
+    private static final String SUBSCRIBER_SESSION_SPECIFIC_UNICAST_URI =
+        "aeron:udp?endpoint=localhost:20000|session-id=42";
     private static final String IPC_URI = "aeron:ipc";
-    private static final List<String> PUBLISHER_URIS = List.of(
+    private static final String SESSION_SPECIFIC_IPC_URI = "aeron:ipc?session-id=7";
+    private static final List<String> ALL_PUBLISHER_URIS = List.of(
         PUBLISHER_UNICAST_URI,
         PUBLISHER_MDC_URI,
-        IPC_URI
+        IPC_URI,
+        PUBLISHER_SESSION_SPECIFIC_UNICAST_URI,
+        SESSION_SPECIFIC_IPC_URI
     );
+    private static final List<String> NON_SESSION_SPECIFIC_PUBLISHER_URIS =
+        List.copyOf(ALL_PUBLISHER_URIS.subList(0, 3));
     private static final List<String> SUBSCRIBER_URIS = List.of(
         SUBSCRIBER_UNICAST_URI,
-        IPC_URI
+        SUBSCRIBER_SESSION_SPECIFIC_UNICAST_URI,
+        IPC_URI,
+        SESSION_SPECIFIC_IPC_URI
     );
     private static final int STREAM_ID = 1000;
 
@@ -140,7 +151,7 @@ class SocketLifecycleTest
     }
 
     @ParameterizedTest
-    @FieldSource("PUBLISHER_URIS")
+    @FieldSource("ALL_PUBLISHER_URIS")
     @InterruptAfter(10)
     void supportsClosingAndImmediatelyOpeningPublicationWithSameChannel(final String channelUri)
     {
@@ -152,8 +163,7 @@ class SocketLifecycleTest
                 final Publication publication = aeron.addPublication(channelUri, STREAM_ID);
                 assertThat(
                     publication.channelStatus(),
-                    oneOf(ChannelEndpointStatus.INITIALIZING, ChannelEndpointStatus.ACTIVE)
-                );
+                    oneOf(ChannelEndpointStatus.INITIALIZING, ChannelEndpointStatus.ACTIVE));
                 publication.close();
             }
 
@@ -162,7 +172,7 @@ class SocketLifecycleTest
     }
 
     @ParameterizedTest
-    @FieldSource("PUBLISHER_URIS")
+    @FieldSource("ALL_PUBLISHER_URIS")
     void supportsClosingAndImmediatelyOpeningExclusivePublicationWithSameChannel(final String channelUri)
     {
         try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
@@ -263,7 +273,9 @@ class SocketLifecycleTest
             .dirDeleteOnStart(true)
             .conductorIdleStrategy(new NoOpIdleStrategy())
             .receiverIdleStrategy(new SleepingMillisIdleStrategy(2))
-            .senderIdleStrategy(new SleepingMillisIdleStrategy(2));
+            .senderIdleStrategy(new SleepingMillisIdleStrategy(2))
+            .publicationReservedSessionIdLow(0)
+            .publicationReservedSessionIdHigh(1000);
 
         final TestMediaDriver driver = TestMediaDriver.launch(driverCtx, systemTestWatcher);
 
@@ -304,7 +316,8 @@ class SocketLifecycleTest
                 }
                 else
                 {
-                    final String uri = PUBLISHER_URIS.get(random.nextInt(PUBLISHER_URIS.size()));
+                    final String uri = NON_SESSION_SPECIFIC_PUBLISHER_URIS.get(
+                        random.nextInt(NON_SESSION_SPECIFIC_PUBLISHER_URIS.size()));
                     final boolean isExclusive = random.nextBoolean();
                     if (isExclusive)
                     {

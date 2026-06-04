@@ -211,7 +211,7 @@ public abstract class SubscriptionLink implements DriverManagedResource
     /**
      * {@inheritDoc}
      */
-    public void close()
+    public void close(final DriverConductor conductor)
     {
         for (final Map.Entry<Subscribable, ReadablePosition> entry : positionBySubscribableMap.entrySet())
         {

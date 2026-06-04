@@ -32,11 +32,18 @@ import org.agrona.concurrent.status.ReadablePosition;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.*;
+import java.util.ArrayList;
 
 import static io.aeron.ErrorCode.IMAGE_REJECTED;
-import static io.aeron.driver.status.SystemCounterDescriptor.*;
-import static io.aeron.logbuffer.LogBufferDescriptor.*;
+import static io.aeron.driver.status.SystemCounterDescriptor.PUBLICATIONS_REVOKED;
+import static io.aeron.driver.status.SystemCounterDescriptor.UNBLOCKED_PUBLICATIONS;
+import static io.aeron.logbuffer.LogBufferDescriptor.activeTermCount;
+import static io.aeron.logbuffer.LogBufferDescriptor.computePosition;
+import static io.aeron.logbuffer.LogBufferDescriptor.indexByPosition;
+import static io.aeron.logbuffer.LogBufferDescriptor.isPublicationRevoked;
+import static io.aeron.logbuffer.LogBufferDescriptor.rawTailVolatile;
+import static io.aeron.logbuffer.LogBufferDescriptor.termId;
+import static io.aeron.logbuffer.LogBufferDescriptor.termOffset;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
 
 /**
@@ -238,7 +245,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
     /**
      * {@inheritDoc}
      */
-    public void close()
+    public void close(final DriverConductor conductor)
     {
         CloseHelper.close(errorHandler, publisherPos);
         CloseHelper.close(errorHandler, publisherLimit);
@@ -411,7 +418,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
         ++refCount;
     }
 
-    void decRef()
+    void decRef(final DriverConductor conductor)
     {
         if (0 == --refCount)
         {
@@ -423,6 +430,8 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
             {
                 state = State.DRAINING;
             }
+
+            conductor.deactivatePublication(this);
         }
     }
 

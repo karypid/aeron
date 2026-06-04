@@ -46,7 +46,7 @@ final class AeronClient implements DriverManagedResource
     /**
      * {@inheritDoc}
      */
-    public void close()
+    public void close(final DriverConductor conductor)
     {
         heartbeatTimestamp.close();
     }

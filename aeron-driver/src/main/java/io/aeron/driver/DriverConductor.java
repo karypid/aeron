@@ -53,7 +53,6 @@ import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Object2ObjectHashMap;
-import org.agrona.collections.ObjectHashSet;
 import org.agrona.concurrent.Agent;
 import org.agrona.concurrent.AgentInvoker;
 import org.agrona.concurrent.CachedEpochClock;
@@ -153,7 +152,8 @@ public final class DriverConductor implements Agent
     private final ArrayList<SubscriptionLink> subscriptionLinks = new ArrayList<>();
     private final ArrayList<CounterLink> counterLinks = new ArrayList<>();
     private final ArrayList<AeronClient> clients = new ArrayList<>();
-    private final ObjectHashSet<SessionKey> activeSessionSet = new ObjectHashSet<>();
+    private final Object2ObjectHashMap<SessionKey, SessionState> publicationSessionByKeyMap =
+        new Object2ObjectHashMap<>();
     private final EpochClock epochClock;
     private final NanoClock nanoClock;
     private final CachedEpochClock cachedEpochClock;
@@ -685,7 +685,7 @@ public final class DriverConductor implements Agent
         }
 
         final String channel = channelEndpoint.udpChannel().canonicalForm();
-        activeSessionSet.remove(new SessionKey(publication.sessionId(), publication.streamId(), channel));
+        removePublicationSession(publication.streamId(), publication.sessionId(), channel);
     }
 
     // TODO rename, as it isn't closed yet
@@ -747,7 +747,7 @@ public final class DriverConductor implements Agent
 
     void transitionToLinger(final IpcPublication publication)
     {
-        activeSessionSet.remove(new SessionKey(publication.sessionId(), publication.streamId(), IPC_MEDIA));
+        removePublicationSession(publication.streamId(), publication.sessionId(), IPC_MEDIA);
 
         for (int i = 0, size = subscriptionLinks.size(); i < size; i++)
         {
@@ -849,7 +849,7 @@ public final class DriverConductor implements Agent
         {
             publicationLink.revoke();
         }
-        publicationLink.close();
+        publicationLink.close(this);
         clientProxy.operationSucceeded(correlationId);
     }
 
@@ -939,7 +939,7 @@ public final class DriverConductor implements Agent
             {
                 fastUnorderedRemove(subscriptionLinks, i, lastIndex--);
 
-                subscription.close();
+                subscription.close(this);
                 cleanupSubscriptionLink(subscription);
                 isAnySubscriptionFound = true;
             }
@@ -1044,7 +1044,7 @@ public final class DriverConductor implements Agent
 
         clientProxy.operationSucceeded(correlationId);
         clientProxy.onUnavailableCounter(registrationId, counterLink.counterId());
-        counterLink.close();
+        counterLink.close(this);
     }
 
     void onClientClose(final long clientId)
@@ -1144,7 +1144,7 @@ public final class DriverConductor implements Agent
             throw new ControlProtocolException(UNKNOWN_SUBSCRIPTION, "unknown subscription: " + registrationId);
         }
 
-        subscription.close();
+        subscription.close(this);
         cleanupSubscriptionLink(subscription);
         clientProxy.operationSucceeded(correlationId);
         subscription.notifyUnavailableImages(this);
@@ -1213,7 +1213,7 @@ public final class DriverConductor implements Agent
         {
             final int sessionId = advanceSessionId();
 
-            for (final SessionKey key : activeSessionSet)
+            for (final SessionKey key : publicationSessionByKeyMap.keySet())
             {
                 if (streamId == key.streamId && sessionId == key.sessionId)
                 {
@@ -1234,11 +1234,24 @@ public final class DriverConductor implements Agent
             final int sessionId = advanceSessionId();
 
             sessionKey.sessionId = sessionId;
-            if (!activeSessionSet.contains(sessionKey))
+            if (!publicationSessionByKeyMap.containsKey(sessionKey))
             {
                 return sessionId;
             }
         }
+    }
+
+    void deactivatePublication(final IpcPublication publication)
+    {
+        deactivatePublicationSession(publication.streamId(), publication.sessionId(), IPC_MEDIA);
+    }
+
+    void deactivatePublication(final NetworkPublication publication)
+    {
+        deactivatePublicationSession(
+            publication.streamId(),
+            publication.sessionId(),
+            publication.channelEndpoint().udpChannel().canonicalForm());
     }
 
     private int advanceSessionId()
@@ -1252,6 +1265,25 @@ public final class DriverConductor implements Agent
             sessionId = nextSessionId++;
         }
         return sessionId;
+    }
+
+    private void activatePublicationSession(final int streamId, final int sessionId, final String canonicalForm)
+    {
+        publicationSessionByKeyMap.put(new SessionKey(sessionId, streamId, canonicalForm), SessionState.ACTIVE);
+    }
+
+    private void removePublicationSession(final int streamId, final int sessionId, final String canonicalForm)
+    {
+        final SessionKey sessionKey = new SessionKey(sessionId, streamId, canonicalForm);
+        if (SessionState.ACTIVE != publicationSessionByKeyMap.get(sessionKey))
+        {
+            publicationSessionByKeyMap.remove(sessionKey);
+        }
+    }
+
+    private void deactivatePublicationSession(final int streamId, final int sessionId, final String canonicalForm)
+    {
+        publicationSessionByKeyMap.put(new SessionKey(sessionId, streamId, canonicalForm), SessionState.INACTIVE);
     }
 
     private void heartbeatAndCheckTimers(final long nowNs)
@@ -1509,7 +1541,7 @@ public final class DriverConductor implements Agent
 
             channelEndpoint.incRef();
             networkPublications.add(publication);
-            activeSessionSet.add(new SessionKey(params.sessionId, streamId, udpChannel.canonicalForm()));
+            activatePublicationSession(streamId, params.sessionId, udpChannel.canonicalForm());
             senderProxy.newNetworkPublication(publication);
 
             return publication;
@@ -1975,7 +2007,7 @@ public final class DriverConductor implements Agent
             findAndUpdateResponseIpcSubscription(params, publication);
 
             ipcPublications.add(publication);
-            activeSessionSet.add(new SessionKey(params.sessionId, streamId, IPC_MEDIA));
+            activatePublicationSession(streamId, params.sessionId, IPC_MEDIA);
 
             return publication;
         }
@@ -2089,9 +2121,9 @@ public final class DriverConductor implements Agent
     }
 
     private void checkForSessionClash(
-        final int sessionId, final int streamId, final String channel, final String originalChannel)
+        final int sessionId, final int streamId, final String canonicalForm, final String originalChannel)
     {
-        if (activeSessionSet.contains(new SessionKey(sessionId, streamId, channel)))
+        if (SessionState.ACTIVE == publicationSessionByKeyMap.get(new SessionKey(sessionId, streamId, canonicalForm)))
         {
             throw new InvalidChannelException("existing publication has clashing sessionId=" + sessionId +
                 " for streamId=" + streamId + " channel=" + originalChannel);
@@ -2111,7 +2143,7 @@ public final class DriverConductor implements Agent
             {
                 try
                 {
-                    resource.close();
+                    resource.close(this);
                 }
                 catch (final Exception ex)
                 {
@@ -3508,5 +3540,11 @@ public final class DriverConductor implements Agent
             }
             return false;
         }
+    }
+
+    private enum SessionState
+    {
+        ACTIVE,
+        INACTIVE
     }
 }

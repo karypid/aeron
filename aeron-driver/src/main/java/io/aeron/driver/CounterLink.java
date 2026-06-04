@@ -37,7 +37,7 @@ final class CounterLink implements DriverManagedResource
     /**
      * {@inheritDoc}
      */
-    public void close()
+    public void close(final DriverConductor conductor)
     {
         counter.close();
     }
