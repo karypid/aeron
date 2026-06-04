@@ -15,79 +15,27 @@
  */
 package io.aeron.driver;
 
+import io.aeron.api.InternalApi;
 import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.ReceiveDestinationTransport;
 import io.aeron.driver.media.SendChannelEndpoint;
 import io.aeron.driver.media.UdpChannel;
 import org.agrona.concurrent.ManyToOneConcurrentLinkedQueue;
-import org.agrona.concurrent.status.AtomicCounter;
 
 import java.net.InetSocketAddress;
-
-import static io.aeron.driver.ThreadingMode.INVOKER;
-import static io.aeron.driver.ThreadingMode.SHARED;
 
 /**
  * Proxy for sending commands to the {@link DriverConductor}.
  */
+@InternalApi
 public final class DriverConductorProxy
 {
     private DriverConductor driverConductor;
-    private final ThreadingMode threadingMode;
     private final ManyToOneConcurrentLinkedQueue<Runnable> commandQueue;
-    private final AtomicCounter failCount;
-    private final boolean notConcurrent;
 
-    DriverConductorProxy(
-        final ThreadingMode threadingMode,
-        final ManyToOneConcurrentLinkedQueue<Runnable> commandQueue,
-        final AtomicCounter failCount)
+    DriverConductorProxy(final ManyToOneConcurrentLinkedQueue<Runnable> commandQueue)
     {
-        this.threadingMode = threadingMode;
         this.commandQueue = commandQueue;
-        this.failCount = failCount;
-        notConcurrent = SHARED == threadingMode || INVOKER == threadingMode;
-    }
-
-    /**
-     * Is the driver conductor not concurrent with the sender and receiver threads.
-     *
-     * @return true if the {@link DriverConductor} is on the same thread as the sender and receiver.
-     */
-    public boolean notConcurrent()
-    {
-        return notConcurrent;
-    }
-
-    /**
-     * Get the threading mode of the driver.
-     *
-     * @return ThreadingMode of the driver.
-     */
-    public ThreadingMode threadingMode()
-    {
-        return threadingMode;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public String toString()
-    {
-        return getClass().getSimpleName() + "{" +
-            "threadingMode=" + threadingMode +
-            ", failCount=" + failCount +
-            '}';
-    }
-
-    /**
-     * Notify the conductor indicating an error with a channel endpoint.
-     *
-     * @param statusIndicatorId representing the channel.
-     * @param ex                cause of the error.
-     */
-    public void channelEndpointError(final long statusIndicatorId, final Exception ex)
-    {
     }
 
     /**
@@ -100,14 +48,7 @@ public final class DriverConductorProxy
     public void reResolveEndpoint(
         final String endpoint, final SendChannelEndpoint channelEndpoint, final InetSocketAddress address)
     {
-        if (notConcurrent())
-        {
-            driverConductor.onReResolveEndpoint(endpoint, channelEndpoint, address);
-        }
-        else
-        {
-            offer(() -> driverConductor.onReResolveEndpoint(endpoint, channelEndpoint, address));
-        }
+        offer(() -> driverConductor.onReResolveEndpoint(endpoint, channelEndpoint, address));
     }
 
     /**
@@ -124,14 +65,7 @@ public final class DriverConductorProxy
         final ReceiveChannelEndpoint channelEndpoint,
         final InetSocketAddress address)
     {
-        if (notConcurrent())
-        {
-            driverConductor.onReResolveControl(endpoint, udpChannel, channelEndpoint, address);
-        }
-        else
-        {
-            offer(() -> driverConductor.onReResolveControl(endpoint, udpChannel, channelEndpoint, address));
-        }
+        offer(() -> driverConductor.onReResolveControl(endpoint, udpChannel, channelEndpoint, address));
     }
 
     /**
@@ -141,14 +75,7 @@ public final class DriverConductorProxy
      */
     public void closeReceiveDestination(final ReceiveDestinationTransport destinationTransport)
     {
-        if (notConcurrent())
-        {
-            driverConductor.closeReceiveDestination(destinationTransport);
-        }
-        else
-        {
-            offer(() -> driverConductor.closeReceiveDestination(destinationTransport));
-        }
+        offer(() -> driverConductor.closeReceiveDestination(destinationTransport));
     }
 
     /**
@@ -159,14 +86,7 @@ public final class DriverConductorProxy
      */
     public void responseSetup(final long responseCorrelationId, final int responseSessionId)
     {
-        if (notConcurrent())
-        {
-            driverConductor.responseSetup(responseCorrelationId, responseSessionId);
-        }
-        else
-        {
-            offer(() -> driverConductor.responseSetup(responseCorrelationId, responseSessionId));
-        }
+        offer(() -> driverConductor.responseSetup(responseCorrelationId, responseSessionId));
     }
 
     /**
@@ -176,38 +96,17 @@ public final class DriverConductorProxy
      */
     public void responseConnected(final long responseCorrelationId)
     {
-        if (notConcurrent())
-        {
-            driverConductor.responseConnected(responseCorrelationId);
-        }
-        else
-        {
-            offer(() -> driverConductor.responseConnected(responseCorrelationId));
-        }
+        offer(() -> driverConductor.responseConnected(responseCorrelationId));
     }
 
     void receiveChannelEndpointClosed(final ReceiveChannelEndpoint channelEndpoint)
     {
-        if (notConcurrent())
-        {
-            driverConductor.receiveChannelEndpointClosed(channelEndpoint);
-        }
-        else
-        {
-            offer(() -> driverConductor.receiveChannelEndpointClosed(channelEndpoint));
-        }
+        offer(() -> driverConductor.receiveChannelEndpointClosed(channelEndpoint));
     }
 
     void sendChannelEndpointClosed(final SendChannelEndpoint channelEndpoint)
     {
-        if (notConcurrent())
-        {
-            driverConductor.sendChannelEndpointClosed(channelEndpoint);
-        }
-        else
-        {
-            offer(() -> driverConductor.sendChannelEndpointClosed(channelEndpoint));
-        }
+        offer(() -> driverConductor.sendChannelEndpointClosed(channelEndpoint));
     }
 
     void driverConductor(final DriverConductor driverConductor)
@@ -229,38 +128,19 @@ public final class DriverConductorProxy
         final InetSocketAddress srcAddress,
         final ReceiveChannelEndpoint channelEndpoint)
     {
-        if (notConcurrent())
-        {
-            driverConductor.onCreatePublicationImage(
-                sessionId,
-                streamId,
-                initialTermId,
-                activeTermId,
-                termOffset,
-                termLength,
-                mtuLength,
-                transportIndex,
-                flags,
-                controlAddress,
-                srcAddress,
-                channelEndpoint);
-        }
-        else
-        {
-            offer(() -> driverConductor.onCreatePublicationImage(
-                sessionId,
-                streamId,
-                initialTermId,
-                activeTermId,
-                termOffset,
-                termLength,
-                mtuLength,
-                transportIndex,
-                flags,
-                controlAddress,
-                srcAddress,
-                channelEndpoint));
-        }
+        offer(() -> driverConductor.onCreatePublicationImage(
+            sessionId,
+            streamId,
+            initialTermId,
+            activeTermId,
+            termOffset,
+            termLength,
+            mtuLength,
+            transportIndex,
+            flags,
+            controlAddress,
+            srcAddress,
+            channelEndpoint));
     }
 
     void onPublicationError(
@@ -274,32 +154,16 @@ public final class DriverConductorProxy
         final int errorCode,
         final String errorMessage)
     {
-        if (notConcurrent())
-        {
-            driverConductor.onPublicationError(
-                registrationId,
-                destinationRegistrationId,
-                sessionId,
-                streamId,
-                receiverId,
-                groupId,
-                srcAddress,
-                errorCode,
-                errorMessage);
-        }
-        else
-        {
-            offer(() -> driverConductor.onPublicationError(
-                registrationId,
-                destinationRegistrationId,
-                sessionId,
-                streamId,
-                receiverId,
-                groupId,
-                srcAddress,
-                errorCode,
-                errorMessage));
-        }
+        offer(() -> driverConductor.onPublicationError(
+            registrationId,
+            destinationRegistrationId,
+            sessionId,
+            streamId,
+            receiverId,
+            groupId,
+            srcAddress,
+            errorCode,
+            errorMessage));
     }
 
     private void offer(final Runnable cmd)

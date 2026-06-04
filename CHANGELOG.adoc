@@ -4,29 +4,61 @@
 
 === New & Noteworthy
 
+* **[Driver]** Move log buffer creation/removal out of the `conductor` thread.
++
+Creating and removing log buffers can take a long time (on the order of hundreds of milliseconds for large term buffers).
+Previously this was done on the driver conductor thread which meant a stall whenever such operation was executed. This
+stall then was impacting end to end latency of the message flows, because conductor was not updating the stream counters
+while stalled (i.e. `pub-lmt`).
++
+Now these operation are executed on the background thread (`NativeResourceAgent`) and the driver conductor is no longer
+blocked by them.
+
+* **Breaking** **[Driver]** `AsyncExecutor` configuration changes.
++
+`AsyncExecutor` was renamed to `NativeResourceAgent` along side the corresponding configuration options (i.e.
+`aeron.driver.async.executor.idle.strategy` was renamed to `aeron.driver.native.resource.agent.idle.strategy`).
++
+`NativeResourceAgent` is now tied to the threading mode of the media driver, i.e. it is no longer possible to
+enable/disable it separately (`aeron.driver.async.executor.enabled` was removed). When thread mode is configured to:
++
+--
+** `DEDICATED`/`SHARED_NETWORK` - it will run on a dedicated thread.
+** `SHARED`/`INVOKER` - it will run on the `conductor` thread.
+--
++
+Thread name was changed from `aeron-executor` to `aeron-md-nra`.
+
+* **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the
+deletion of segments.
+
+* **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based
+on the max configured file size (`aeron.event.log.file.max.length`). By default max file size is unlimited, i.e. file
+rollover is disabled.
+
 * **Breaking** **[Cluster]** Removed unused method `ConsensusModuleExtension#supportedSchemaId()` that gave the
 impression as if there could only be a single schema supported by an extension. This is a breaking change in an
 internal API.
+
 * **Breaking** **[Cluster]** Introduce `VersionValidator` interface and use it within the `ConsensusModule` and
 `ClusteredServiceContainer` in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator`
 remains the default.
-* **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the
-deletion of segments.
-* **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based
-on the max configured file size. By default max file size is unlimited, i.e. file rollover is disabled.
+
 * **[Driver/C]** CPU affinity for driver threads is now cgroup aware. The user supplied CPU number for each thread can
 be an offset into the CPU set for the processes current CPU group.
+
 * **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name
 resolution.
 
 === Changelog
 
-* [Driver/C] Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
-* [Client] Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
+* **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
+* **[Client]** Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
 image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
-* [C] Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
-* [Client/Java] Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
-* [Client/C] Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
+* **[C]** Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
+* **[Client/Java]** Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
+* **[Client/C]** Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
+* **[Cluster]** Added VersionValidator interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.

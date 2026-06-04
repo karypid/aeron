@@ -15,16 +15,30 @@
  */
 package io.aeron.driver;
 
-import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
-import org.agrona.concurrent.status.AtomicCounter;
+import org.agrona.LangUtil;
 
-class AsyncExecutorProxy extends CommandProxy
+final class CommandResult<T>
 {
-    AsyncExecutorProxy(
-        final OneToOneConcurrentArrayQueue<Runnable> commandQueue,
-        final AtomicCounter failCount,
-        final boolean notConcurrent)
+    private volatile T value;
+    private volatile Throwable error;
+
+    void ok(final T value)
     {
-        super(commandQueue, failCount, notConcurrent);
+        this.value = value;
+    }
+
+    void error(final Throwable error)
+    {
+        this.error = error;
+    }
+
+    T get()
+    {
+        final Throwable error = this.error;
+        if (null != error)
+        {
+            LangUtil.rethrowUnchecked(error);
+        }
+        return value;
     }
 }

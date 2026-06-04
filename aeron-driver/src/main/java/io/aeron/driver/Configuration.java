@@ -1144,25 +1144,14 @@ public final class Configuration
     public static final String RECEIVER_WILDCARD_PORT_RANGE_PROP_NAME = "aeron.receiver.wildcard.port.range";
 
     /**
-     * Property name to enable or disable async executor. Defaults to {@code true}, i.e. enabled. Setting this property
-     * to {@code false} will disable async executor, i.e. DNS and DNR resolution will be done on the
-     * {@code conductor} thread.
+     * Property name to configure idle strategy for {@code NativeResourceAgent}. Defaults to {@code sleep-ns} strategy
+     * with one-millisecond sleep time.
      *
-     * @since 1.51.0
+     * @since 1.52.0
      */
     @Config(defaultType = DefaultType.BOOLEAN, defaultBoolean = true)
-    public static final String ASYNC_EXECUTOR_ENABLED_PROP_NAME = "aeron.driver.async.executor.enabled";
-
-    /**
-     * Property name to configure idle strategy for async executor when enabled. Defaults to {@code sleep-ns} strategy
-     * with one millisecond sleep time.
-     *
-     * @see #ASYNC_EXECUTOR_ENABLED_PROP_NAME
-     * @since 1.51.0
-     */
-    @Config(defaultType = DefaultType.BOOLEAN, defaultBoolean = true)
-    public static final String ASYNC_EXECUTOR_IDLE_STRATEGY_PROP_NAME =
-        "aeron.driver.async.executor.idle.strategy";
+    public static final String NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_PROP_NAME =
+        "aeron.driver.native.resource.agent.idle.strategy";
 
     /**
      * Property name to set a limit on the number sessions allowed per stream on a subscription.
@@ -2083,34 +2072,18 @@ public final class Configuration
     }
 
     /**
-     * Is async executor enabled or not.Defaults to {@code true}, i.e. enabled. Setting this property
-     *      * to {@code false} will disable async executor, i.e. DNS and DNR resolution will be done on the
-     *      * {@code conductor} thread.
-     *
-     * @return {@code true} if async task executor is enabled or {@code false} otherwise.
-     * @see #ASYNC_EXECUTOR_ENABLED_PROP_NAME
-     * @since 1.51.0
-     */
-    public static boolean asyncExecutorEnabled()
-    {
-        return "true".equalsIgnoreCase(getProperty(ASYNC_EXECUTOR_ENABLED_PROP_NAME, "true"));
-    }
-
-    /**
      * {@return {@link IdleStrategy} to be employed by the async executor when enabled.}
      *
      * @param controllableStatus to allow control of {@link ControllableIdleStrategy}, which can be null if not used.
-     * @see #ASYNC_EXECUTOR_IDLE_STRATEGY_PROP_NAME
-     * @see #ASYNC_EXECUTOR_ENABLED_PROP_NAME
+     * @see #NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_PROP_NAME
      * @since 1.51.0
      */
-    public static IdleStrategy asyncExecutorIdleStrategy(final StatusIndicator controllableStatus)
+    public static IdleStrategy nativeResourceAgentIdleStrategy(final StatusIndicator controllableStatus)
     {
-        final String idleStategyName = getProperty(ASYNC_EXECUTOR_IDLE_STRATEGY_PROP_NAME);
+        final String idleStategyName = getProperty(NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_PROP_NAME);
         if (Strings.isEmpty(idleStategyName))
         {
-            final SleepingIdleStrategy idleStrategy = new SleepingIdleStrategy(TimeUnit.MILLISECONDS.toNanos(1));
-            return idleStrategy;
+            return new SleepingIdleStrategy(TimeUnit.MILLISECONDS.toNanos(1));
         }
         return agentIdleStrategy(idleStategyName, controllableStatus);
     }
@@ -2124,61 +2097,50 @@ public final class Configuration
      */
     public static IdleStrategy agentIdleStrategy(final String strategyName, final StatusIndicator controllableStatus)
     {
-        IdleStrategy idleStrategy = null;
-
-        switch (strategyName)
+        return switch (strategyName)
         {
             case NoOpIdleStrategy.ALIAS:
             case "org.agrona.concurrent.NoOpIdleStrategy":
-                idleStrategy = NoOpIdleStrategy.INSTANCE;
-                break;
+                yield NoOpIdleStrategy.INSTANCE;
 
             case BusySpinIdleStrategy.ALIAS:
             case "org.agrona.concurrent.BusySpinIdleStrategy":
-                idleStrategy = BusySpinIdleStrategy.INSTANCE;
-                break;
+                yield BusySpinIdleStrategy.INSTANCE;
 
             case YieldingIdleStrategy.ALIAS:
             case "org.agrona.concurrent.YieldingIdleStrategy":
-                idleStrategy = YieldingIdleStrategy.INSTANCE;
-                break;
+                yield YieldingIdleStrategy.INSTANCE;
 
             case SleepingIdleStrategy.ALIAS:
             case "org.agrona.concurrent.SleepingIdleStrategy":
-                idleStrategy = new SleepingIdleStrategy();
-                break;
+                yield new SleepingIdleStrategy();
 
             case SleepingMillisIdleStrategy.ALIAS:
             case "org.agrona.concurrent.SleepingMillisIdleStrategy":
-                idleStrategy = new SleepingMillisIdleStrategy();
-                break;
+                yield new SleepingMillisIdleStrategy();
 
             case BackoffIdleStrategy.ALIAS:
-            case DEFAULT_IDLE_STRATEGY:
-                idleStrategy = new BackoffIdleStrategy(
+            case "org.agrona.concurrent.BackoffIdleStrategy":
+                yield new BackoffIdleStrategy(
                     IDLE_MAX_SPINS, IDLE_MAX_YIELDS, IDLE_MIN_PARK_NS, IDLE_MAX_PARK_NS);
-                break;
 
             case ControllableIdleStrategy.ALIAS:
-            case CONTROLLABLE_IDLE_STRATEGY:
+            case "org.agrona.concurrent.ControllableIdleStrategy":
                 Objects.requireNonNull(controllableStatus);
                 controllableStatus.setRelease(ControllableIdleStrategy.PARK);
-                idleStrategy = new ControllableIdleStrategy(controllableStatus);
-                break;
+                yield new ControllableIdleStrategy(controllableStatus);
 
             default:
                 try
                 {
-                    idleStrategy = (IdleStrategy)Class.forName(strategyName).getConstructor().newInstance();
+                    yield (IdleStrategy)Class.forName(strategyName).getConstructor().newInstance();
                 }
                 catch (final Exception ex)
                 {
                     LangUtil.rethrowUnchecked(ex);
+                    yield null; // unreachable
                 }
-                break;
-        }
-
-        return idleStrategy;
+        };
     }
 
     /**

@@ -238,14 +238,6 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
     /**
      * {@inheritDoc}
      */
-    public boolean free()
-    {
-        return rawLog.free();
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public void close()
     {
         CloseHelper.close(errorHandler, publisherPos);

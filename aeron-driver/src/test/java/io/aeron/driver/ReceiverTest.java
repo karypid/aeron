@@ -132,7 +132,7 @@ class ReceiverTest
     private ReceiverProxy receiverProxy;
     private final ManyToOneConcurrentLinkedQueue<Runnable> toConductorQueue = new ManyToOneConcurrentLinkedQueue<>();
     private final DriverConductorProxy driverConductorProxy =
-        new DriverConductorProxy(ThreadingMode.DEDICATED, toConductorQueue, mock(AtomicCounter.class));
+        new DriverConductorProxy(toConductorQueue);
     private final CongestionControl congestionControl = mock(CongestionControl.class);
     private final MediaDriver.Context ctx = new MediaDriver.Context()
         .systemCounters(mockSystemCounters)
@@ -179,7 +179,7 @@ class ReceiverTest
             .receiverDutyCycleTracker(new DutyCycleTracker());
 
         receiverProxy = new ReceiverProxy(
-            ctx.receiverCommandQueue(), mock(AtomicCounter.class), false);
+            ctx.receiverCommandQueue(), mock(AtomicCounter.class));
 
         receiver = new Receiver(ctx);
         receiverProxy.receiver(receiver);

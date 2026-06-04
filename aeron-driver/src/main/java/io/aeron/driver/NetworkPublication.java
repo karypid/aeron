@@ -288,14 +288,6 @@ public final class NetworkPublication
     /**
      * {@inheritDoc}
      */
-    public boolean free()
-    {
-        return rawLog.free();
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public void close()
     {
         CloseHelper.close(errorHandler, publisherPos);

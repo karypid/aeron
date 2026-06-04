@@ -19,38 +19,17 @@ import org.agrona.concurrent.AgentTerminationException;
 import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
 import org.agrona.concurrent.status.AtomicCounter;
 
-import java.util.function.Consumer;
-
 abstract class CommandProxy
 {
-    static final Consumer<Runnable> RUN_TASK = Runnable::run;
     final OneToOneConcurrentArrayQueue<Runnable> commandQueue;
     private final AtomicCounter failCount;
-    private final boolean notConcurrent;
 
     CommandProxy(
         final OneToOneConcurrentArrayQueue<Runnable> commandQueue,
-        final AtomicCounter failCount,
-        final boolean notConcurrent)
+        final AtomicCounter failCount)
     {
         this.commandQueue = commandQueue;
         this.failCount = failCount;
-        this.notConcurrent = notConcurrent;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public String toString()
-    {
-        return getClass().getSimpleName() + "{" +
-            ", failCount=" + failCount +
-            '}';
-    }
-
-    final boolean notConcurrent()
-    {
-        return notConcurrent;
     }
 
     final void offer(final Runnable cmd)
