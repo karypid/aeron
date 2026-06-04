@@ -31,6 +31,7 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
 * **[Java]** Upgrade to `Shadow` 9.4.2.
+* **[Java]** Upgrade to `ASM` 9.10.1.
 
 == 1.51.0 (2026-04-28)
 
