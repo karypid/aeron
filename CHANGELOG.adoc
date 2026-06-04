@@ -4,17 +4,23 @@
 
 === New & Noteworthy
 
-* **Breaking**  **[Cluster]** Removed unused method `ConsensusModuleExtension#supportedSchemaId()` that gave the
+* **Breaking** **[Cluster]** Removed unused method `ConsensusModuleExtension#supportedSchemaId()` that gave the
 impression as if there could only be a single schema supported by an extension. This is a breaking change in an
 internal API.
-* **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the deletion of segments.
-* **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based file size.
-* **[Driver/C]** CPU affinity for driver threads is not CGroup aware. The user supplied CPU number for each thread can be an offset into the CPU set for the processes current CPU group.
-* **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name resolution.
+* **Breaking** **[Cluster]** Introduce `VersionValidator` interface and use it within the `ConsensusModule` and
+`ClusteredService` in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator` remains
+the default.
+* **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the
+deletion of segments.
+* **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based
+file size.
+* **[Driver/C]** CPU affinity for driver threads is now cgroup aware. The user supplied CPU number for each thread can
+be an offset into the CPU set for the processes current CPU group.
+* **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name
+resolution.
 
 === Changelog
 
-* **[Cluster]** Introduce `VersionValidator` interface and use it within the ConsensusModule and ClusteredService in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator` remains the default.
 * [Driver/C] Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
 * [Client] Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
 image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
