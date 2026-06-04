@@ -356,7 +356,7 @@ public final class CTestMediaDriver implements TestMediaDriver
 
     public AgentInvoker sharedAgentInvoker()
     {
-        throw new UnsupportedOperationException("Not supported in C media driver");
+        return null;
     }
 
     public static void enableRandomLossOnReceive(
