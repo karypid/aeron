@@ -14,7 +14,7 @@ while stalled (i.e. `pub-lmt`).
 Now these operation are executed on the background thread (`NativeResourceAgent`) and the driver conductor is no longer
 blocked by them.
 
-* **Breaking** **[Driver]** `AsyncExecutor` configuration changes.
+* **Breaking:** **[Driver]** `AsyncExecutor` configuration changes.
 +
 `AsyncExecutor` was renamed to `NativeResourceAgent` along side the corresponding configuration options (i.e.
 `aeron.driver.async.executor.idle.strategy` was renamed to `aeron.driver.native.resource.agent.idle.strategy`).
@@ -39,11 +39,11 @@ deletion of segments.
 on the max configured file size (`aeron.event.log.file.max.length`). By default max file size is unlimited, i.e. file
 rollover is disabled.
 
-* **Breaking** **[Cluster]** Removed unused method `ConsensusModuleExtension#supportedSchemaId()` that gave the
+* **Breaking:** **[Cluster]** Removed unused method `ConsensusModuleExtension#supportedSchemaId()` that gave the
 impression as if there could only be a single schema supported by an extension. This is a breaking change in an
 internal API.
 
-* **Breaking** **[Cluster]** Introduce `VersionValidator` interface and use it within the `ConsensusModule` and
+* **Breaking:** **[Cluster]** Introduce `VersionValidator` interface and use it within the `ConsensusModule` and
 `ClusteredServiceContainer` in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator`
 remains the default.
 
