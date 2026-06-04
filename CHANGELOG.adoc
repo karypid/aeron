@@ -8,12 +8,12 @@
 impression as if there could only be a single schema supported by an extension. This is a breaking change in an
 internal API.
 * **Breaking** **[Cluster]** Introduce `VersionValidator` interface and use it within the `ConsensusModule` and
-`ClusteredService` in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator` remains
-the default.
+`ClusteredServiceContainer` in place of the `AppVersionValidator` allowing for custom versions. `AppVersionValidator`
+remains the default.
 * **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the
 deletion of segments.
 * **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based
-file size.
+on the max configured file size. By default max file size is unlimited, i.e. file rollover is disabled.
 * **[Driver/C]** CPU affinity for driver threads is now cgroup aware. The user supplied CPU number for each thread can
 be an offset into the CPU set for the processes current CPU group.
 * **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name
