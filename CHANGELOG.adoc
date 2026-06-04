@@ -8,6 +8,9 @@
 impression as if there could only be a single schema supported by an extension. This is a breaking change in an
 internal API.
 * **[Archive]** Truncating a recording now stops any concurrent replays of that recording before proceeding with the deletion of segments.
+* **[Event Logging]** The event debug logging when writing to a file allows for files to be rolled automatically based file size.
+* **[Driver/C]** CPU affinity for driver threads is not CGroup aware. The user supplied CPU number for each thread can be an offset into the CPU set for the processes current CPU group.
+* **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name resolution.
 
 === Changelog
 
@@ -17,8 +20,6 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * [C] Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
 * [Client/Java] Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
 * [Client/C] Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
-* [Driver/C] Support using CGroups based cpusets when setting thread affinity. Validate that the cpuset has a sane configuration.
-* [Driver/C] Support setting thread affinity on the async agent (used for name resolution, etc.)
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 
