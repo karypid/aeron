@@ -302,14 +302,6 @@ public final class PublicationImage
     /**
      * {@inheritDoc}
      */
-    public boolean free()
-    {
-        return rawLog.free();
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public void close()
     {
         CloseHelper.close(errorHandler, hwmPosition);
