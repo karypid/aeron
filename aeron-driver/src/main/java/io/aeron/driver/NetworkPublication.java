@@ -288,7 +288,7 @@ public final class NetworkPublication
     /**
      * {@inheritDoc}
      */
-    public void close(final DriverConductor conductor)
+    public void close()
     {
         CloseHelper.close(errorHandler, publisherPos);
         CloseHelper.close(errorHandler, publisherLimit);
@@ -1217,7 +1217,7 @@ public final class NetworkPublication
         LogBufferDescriptor.isPublicationRevoked(metaDataBuffer, true);
     }
 
-    void decRef(final DriverConductor conductor)
+    void decRef()
     {
         if (0 == --refCount)
         {
@@ -1234,8 +1234,6 @@ public final class NetworkPublication
 
                 state = State.DRAINING;
             }
-
-            conductor.deactivatePublication(this);
         }
     }
 

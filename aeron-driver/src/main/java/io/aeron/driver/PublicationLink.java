@@ -46,15 +46,15 @@ final class PublicationLink implements DriverManagedResource
     /**
      * {@inheritDoc}
      */
-    public void close(final DriverConductor conductor)
+    public void close()
     {
         if (publication instanceof NetworkPublication)
         {
-            ((NetworkPublication)publication).decRef(conductor);
+            ((NetworkPublication)publication).decRef();
         }
         else
         {
-            ((IpcPublication)publication).decRef(conductor);
+            ((IpcPublication)publication).decRef();
         }
     }
 

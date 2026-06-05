@@ -302,7 +302,7 @@ public final class PublicationImage
     /**
      * {@inheritDoc}
      */
-    public void close(final DriverConductor conductor)
+    public void close()
     {
         CloseHelper.close(errorHandler, hwmPosition);
         CloseHelper.close(errorHandler, rebuildPosition);
