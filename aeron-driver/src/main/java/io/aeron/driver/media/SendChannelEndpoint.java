@@ -59,7 +59,6 @@ import static io.aeron.driver.status.SystemCounterDescriptor.NAK_MESSAGES_RECEIV
 import static io.aeron.driver.status.SystemCounterDescriptor.STATUS_MESSAGES_RECEIVED;
 import static io.aeron.driver.status.SystemCounterDescriptor.STATUS_MESSAGES_REJECTED;
 import static io.aeron.protocol.StatusMessageFlyweight.SEND_SETUP_FLAG;
-import static io.aeron.status.ChannelEndpointStatus.status;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static java.util.Objects.requireNonNull;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
@@ -196,7 +195,8 @@ public class SendChannelEndpoint extends UdpChannelTransport
         if (currentStatus != ChannelEndpointStatus.INITIALIZING)
         {
             throw new IllegalStateException(
-                "channel cannot be registered unless INITIALIZING: status=" + status(currentStatus));
+                "channel cannot be registered unless INITIALIZING: status=" +
+                ChannelEndpointStatus.status(currentStatus));
         }
 
         statusIndicator.appendToLabel(bindAddressAndPort());
@@ -212,13 +212,15 @@ public class SendChannelEndpoint extends UdpChannelTransport
     }
 
     /**
-     * Returns whether the channel is active and can be used for new publications.
+     * The {@link ChannelEndpointStatus} value for the channel.
      *
-     * @return whether the channel is active and can be used for new publications.
+     * <p>Must not be called after calling {@link #close()}, as it accesses a counter.</p>
+     *
+     * @return the {@link ChannelEndpointStatus} value for the channel.
      */
-    public boolean isActive()
+    public long status()
     {
-        return !statusIndicator.isClosed() && statusIndicator.getAcquire() == ChannelEndpointStatus.ACTIVE;
+        return statusIndicator.getAcquire();
     }
 
     /**

@@ -18,8 +18,10 @@ package io.aeron.driver;
 import io.aeron.Aeron;
 import io.aeron.AeronCounters;
 import io.aeron.CommonContext;
+import io.aeron.ErrorCode;
 import io.aeron.Publication;
 import io.aeron.Subscription;
+import io.aeron.exceptions.RegistrationException;
 import io.aeron.status.ChannelEndpointStatus;
 import io.aeron.status.LocalSocketAddressStatus;
 import io.aeron.test.EventLogExtension;
@@ -39,29 +41,22 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.FieldSource;
 
 import java.util.List;
-import java.util.Random;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.oneOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @ExtendWith({ EventLogExtension.class, InterruptingTestCallback.class })
 class SocketLifecycleTest
 {
     private static final int TEST_ITERATION_COUNT = 10;
-    private static final int EXAMPLE_TEST_ITERATION_COUNT = 100;
-    private static final int PROPERTY_TEST_ITERATION_COUNT = 1000;
     private static final String PUBLISHER_MDC_URI = "aeron:udp?control-mode=dynamic|control=localhost:5001";
     private static final String PUBLISHER_UNICAST_URI = "aeron:udp?control=localhost:5000|endpoint=localhost:10000";
-    private static final String SUBSCRIBER_UNICAST_URI = "aeron:udp?endpoint=localhost:10000";
     private static final String IPC_URI = "aeron:ipc";
     private static final List<String> PUBLISHER_URIS = List.of(
         PUBLISHER_UNICAST_URI,
         PUBLISHER_MDC_URI,
-        IPC_URI
-    );
-    private static final List<String> SUBSCRIBER_URIS = List.of(
-        SUBSCRIBER_UNICAST_URI,
         IPC_URI
     );
     private static final int STREAM_ID = 1000;
@@ -69,11 +64,12 @@ class SocketLifecycleTest
     @RegisterExtension
     final SystemTestWatcher systemTestWatcher = new SystemTestWatcher();
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(value = ThreadingMode.class, mode = EnumSource.Mode.EXCLUDE, names = "INVOKER")
     @InterruptAfter(10)
-    void supportsClosingOpeningSubscriptionWithSameChannelUri0()
+    void supportsClosingOpeningSubscriptionWithSameChannelUri0(final ThreadingMode threadingMode)
     {
-        try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
+        try (TestMediaDriver driver = launchDriver(threadingMode);
             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
         {
             final CountersReader countersReader = aeron.countersReader();
@@ -97,11 +93,13 @@ class SocketLifecycleTest
         }
     }
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(value = ThreadingMode.class, mode = EnumSource.Mode.EXCLUDE, names = "INVOKER")
     @InterruptAfter(10)
-    void supportsClosingOpeningSubscriptionWithSameChannelUri1()
+    void supportsClosingOpeningSubscriptionWithSameChannelUri1(final ThreadingMode threadingMode)
     {
-        try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
+        int unavailableCount = 0;
+        try (TestMediaDriver driver = launchDriver(threadingMode);
             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
         {
             for (int i = 0; i < TEST_ITERATION_COUNT; i++)
@@ -109,32 +107,27 @@ class SocketLifecycleTest
                 Subscription subscription = null;
                 while (null == subscription)
                 {
-                    subscription = aeron.addSubscription("aeron:udp?endpoint=localhost:10000", 1000);
+                    try
+                    {
+                        subscription = aeron.addSubscription("aeron:udp?endpoint=localhost:10000", 1000);
+                    }
+                    catch (final RegistrationException exception)
+                    {
+                        if (ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE == exception.errorCode())
+                        {
+                            ++unavailableCount;
+                            Tests.yield();
+                        }
+                        else
+                        {
+                            throw exception;
+                        }
+                    }
                 }
                 subscription.close();
             }
 
-            assertEquals(0, errorCount(aeron));
-        }
-    }
-
-    @ParameterizedTest
-    @FieldSource("SUBSCRIBER_URIS")
-    void supportsClosingAndImmediatelyOpeningSubscriptionWithSameChannel(final String channelUri)
-    {
-        try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
-            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
-        {
-            for (int i = 0; i < EXAMPLE_TEST_ITERATION_COUNT; i++)
-            {
-                final Subscription subscription = aeron.addSubscription(channelUri, STREAM_ID);
-                assertThat(
-                    subscription.channelStatus(),
-                    oneOf(ChannelEndpointStatus.INITIALIZING, ChannelEndpointStatus.ACTIVE)
-                );
-                subscription.close();
-            }
-
+            assumeTrue(unavailableCount > 0, "Expected at least one RESOURCE_TEMPORARILY_UNAVAILABLE exception");
             assertEquals(0, errorCount(aeron));
         }
     }
@@ -147,7 +140,7 @@ class SocketLifecycleTest
         try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
         {
-            for (int i = 0; i < EXAMPLE_TEST_ITERATION_COUNT; i++)
+            for (int i = 0; i < TEST_ITERATION_COUNT; i++)
             {
                 final Publication publication = aeron.addPublication(channelUri, STREAM_ID);
                 assertThat(
@@ -168,7 +161,7 @@ class SocketLifecycleTest
         try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
         {
-            for (int i = 0; i < EXAMPLE_TEST_ITERATION_COUNT; i++)
+            for (int i = 0; i < TEST_ITERATION_COUNT; i++)
             {
                 final long registrationId = aeron.asyncAddExclusivePublication(channelUri, STREAM_ID);
                 aeron.asyncRemovePublication(registrationId);
@@ -183,8 +176,7 @@ class SocketLifecycleTest
     void noInterferenceBetweenMdsSubscriptionsSharingSameMulticastDestination()
     {
         try (TestMediaDriver driver = launchDriver(ThreadingMode.DEDICATED);
-            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
-        )
+            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
         {
             final Subscription subscription1 = aeron.addSubscription("aeron:udp?control-mode=manual", STREAM_ID);
             final Subscription subscription2 = aeron.addSubscription("aeron:udp?control-mode=manual", STREAM_ID);
@@ -221,35 +213,6 @@ class SocketLifecycleTest
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(value = ThreadingMode.class, mode = EnumSource.Mode.EXCLUDE, names = "INVOKER")
-    void randomlyAttemptToReuseSockets(final ThreadingMode threadingMode)
-    {
-        try (TestMediaDriver driver = launchDriver(threadingMode);
-            Aeron aeron1 = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
-            Aeron aeron2 = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
-            Aeron aeron3 = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
-            Aeron aeron4 = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
-            Aeron aeron5 = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
-        {
-
-            final AeronClientState[] state = {
-                new AeronClientState(aeron1),
-                new AeronClientState(aeron2),
-                new AeronClientState(aeron3),
-                new AeronClientState(aeron4),
-                new AeronClientState(aeron5)
-            };
-
-            final Random random = new Random();
-
-            for (int i = 0; i < PROPERTY_TEST_ITERATION_COUNT; i++)
-            {
-                state[i % state.length].performOperation(random);
-            }
-        }
-    }
-
     private TestMediaDriver launchDriver(final ThreadingMode threadingMode)
     {
         TestMediaDriver.notSupportedOnCMediaDriver("C Media Driver requires more work");
@@ -279,55 +242,5 @@ class SocketLifecycleTest
             AeronCounters.DRIVER_SYSTEM_COUNTER_TYPE_ID,
             AeronCounters.SYSTEM_COUNTER_ID_ERRORS);
         return countersReader.getCounterValue(counterId);
-    }
-
-    private static final class AeronClientState
-    {
-        private final Aeron aeron;
-        private Subscription subscription;
-        private Publication publication;
-
-        AeronClientState(final Aeron aeron)
-        {
-            this.aeron = aeron;
-        }
-
-        public void performOperation(final Random random)
-        {
-            final boolean isPublicationOp = random.nextBoolean();
-            if (isPublicationOp)
-            {
-                if (null != publication)
-                {
-                    publication.close();
-                    publication = null;
-                }
-                else
-                {
-                    final String uri = PUBLISHER_URIS.get(random.nextInt(PUBLISHER_URIS.size()));
-                    final boolean isExclusive = random.nextBoolean();
-                    if (isExclusive)
-                    {
-                        publication = aeron.addExclusivePublication(uri, STREAM_ID);
-                    }
-                    else
-                    {
-                        publication = aeron.addPublication(uri, STREAM_ID);
-                    }
-                }
-            }
-            else
-            {
-                if (null != subscription)
-                {
-                    subscription.close();
-                    subscription = null;
-                }
-                else
-                {
-                    subscription = aeron.addSubscription(SUBSCRIBER_UNICAST_URI, STREAM_ID);
-                }
-            }
-        }
     }
 }

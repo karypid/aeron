@@ -122,7 +122,7 @@ class IpcPublicationTest
         driverConductor.doWork();
         driverConductor.doWork();
 
-        ipcPublication = driverConductor.getSharedIpcPublication(STREAM_ID, Aeron.NULL_VALUE);
+        ipcPublication = driverConductor.findSharedIpcPublication(STREAM_ID, Aeron.NULL_VALUE);
         publisherLimit = new UnsafeBufferPosition(
             (UnsafeBuffer)countersManager.valuesBuffer(), ipcPublication.publisherLimitId());
     }

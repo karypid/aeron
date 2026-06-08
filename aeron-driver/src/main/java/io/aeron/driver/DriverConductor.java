@@ -19,6 +19,7 @@ import io.aeron.ChannelUri;
 import io.aeron.driver.MediaDriver.Context;
 import io.aeron.driver.buffer.RawLog;
 import io.aeron.driver.exceptions.InvalidChannelException;
+import io.aeron.driver.exceptions.UnknownSubscriptionException;
 import io.aeron.driver.media.ControlMode;
 import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.ReceiveDestinationTransport;
@@ -93,9 +94,9 @@ import static io.aeron.CommonContext.RESPONSE_CORRELATION_ID_PARAM_NAME;
 import static io.aeron.CommonContext.SOCKET_RCVBUF_PARAM_NAME;
 import static io.aeron.CommonContext.SOCKET_SNDBUF_PARAM_NAME;
 import static io.aeron.ErrorCode.GENERIC_ERROR;
+import static io.aeron.ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE;
 import static io.aeron.ErrorCode.UNKNOWN_COUNTER;
 import static io.aeron.ErrorCode.UNKNOWN_PUBLICATION;
-import static io.aeron.ErrorCode.UNKNOWN_SUBSCRIPTION;
 import static io.aeron.driver.PublicationParams.PROTOTYPE_VALUE_CORRELATION_ID;
 import static io.aeron.driver.PublicationParams.confirmMatch;
 import static io.aeron.driver.PublicationParams.getPublicationParams;
@@ -356,16 +357,26 @@ public final class DriverConductor implements Agent
         scheduleDriverCommand(new ReResolveControlAddress(control, udpChannel, channelEndpoint, address));
     }
 
-    IpcPublication getSharedIpcPublication(final long streamId, final long responseCorrelationId)
+    IpcPublication findSharedIpcPublication(final long streamId, final long responseCorrelationId)
     {
-        return findSharedIpcPublication(ipcPublications, streamId, responseCorrelationId);
+        for (final IpcPublication publication : ipcPublications)
+        {
+            if (publication.streamId() == streamId &&
+                !publication.isExclusive() &&
+                IpcPublication.State.ACTIVE == publication.state() &&
+                publication.responseCorrelationId() == responseCorrelationId)
+            {
+                return publication;
+            }
+        }
+
+        return null;
     }
 
     IpcPublication getIpcPublication(final long registrationId)
     {
-        for (int i = 0, size = ipcPublications.size(); i < size; i++)
+        for (final IpcPublication publication : ipcPublications)
         {
-            final IpcPublication publication = ipcPublications.get(i);
             if (publication.registrationId() == registrationId)
             {
                 return publication;
@@ -531,43 +542,6 @@ public final class DriverConductor implements Agent
             CloseHelper.quietCloseAll(congestionControl, hwmPos, rcvPos, rcvNaksSent);
             nativeResourceAgentProxy.freeLogBuffer(rawLog);
         }
-    }
-
-    private PublicationImage findResponsePublicationImage(final PublicationParams params)
-    {
-        if (!params.isResponse)
-        {
-            return null;
-        }
-
-        if (NULL_VALUE == params.responseCorrelationId)
-        {
-            throw new IllegalArgumentException(
-                "control-mode=response was specified, but no response-correlation-id set");
-        }
-
-        if (PROTOTYPE_VALUE_CORRELATION_ID == params.responseCorrelationId)
-        {
-            return null;
-        }
-
-        for (final PublicationImage publicationImage : publicationImages)
-        {
-            if (publicationImage.correlationId() == params.responseCorrelationId)
-            {
-                if (publicationImage.hasSendResponseSetup())
-                {
-                    return publicationImage;
-                }
-                else
-                {
-                    throw new IllegalArgumentException(
-                        "image.correlationId=" + params.responseCorrelationId + " did not request a response channel");
-                }
-            }
-        }
-
-        throw new IllegalArgumentException("image.correlationId=" + params.responseCorrelationId + " not found");
     }
 
     private PublicationImage findPublicationImage(final long correlationId)
@@ -947,7 +921,7 @@ public final class DriverConductor implements Agent
 
         if (!isAnySubscriptionFound)
         {
-            throw new ControlProtocolException(UNKNOWN_SUBSCRIPTION, "unknown subscription: " + registrationId);
+            throw new UnknownSubscriptionException("unknown subscription: " + registrationId);
         }
 
         clientProxy.operationSucceeded(correlationId);
@@ -1080,7 +1054,7 @@ public final class DriverConductor implements Agent
 
         if (null == mdsSubscriptionLink)
         {
-            throw new ControlProtocolException(UNKNOWN_SUBSCRIPTION, "unknown MDS subscription: " + registrationId);
+            throw new UnknownSubscriptionException("unknown MDS subscription: " + registrationId);
         }
 
         final IpcSubscriptionLink subscriptionLink = new IpcSubscriptionLink(
@@ -1141,7 +1115,7 @@ public final class DriverConductor implements Agent
 
         if (null == subscription)
         {
-            throw new ControlProtocolException(UNKNOWN_SUBSCRIPTION, "unknown subscription: " + registrationId);
+            throw new UnknownSubscriptionException("unknown subscription: " + registrationId);
         }
 
         subscription.close();
@@ -1389,16 +1363,13 @@ public final class DriverConductor implements Agent
         driverCommand = cmd;
     }
 
-    private static NetworkPublication findPublication(
-        final ArrayList<NetworkPublication> publications,
+    private NetworkPublication findPublication(
         final int streamId,
         final SendChannelEndpoint channelEndpoint,
         final long responseCorrelationId)
     {
-        for (int i = 0, size = publications.size(); i < size; i++)
+        for (final NetworkPublication publication : networkPublications)
         {
-            final NetworkPublication publication = publications.get(i);
-
             if (streamId == publication.streamId() &&
                 channelEndpoint == publication.channelEndpoint() &&
                 NetworkPublication.State.ACTIVE == publication.state() &&
@@ -1517,7 +1488,7 @@ public final class DriverConductor implements Agent
         catch (final Exception ex)
         {
             CloseHelper.quietCloseAll(
-                rawLog, publisherPos, publisherLmt, senderPos, senderLmt, senderBpe, senderNaksReceived);
+                publisherPos, publisherLmt, senderPos, senderLmt, senderBpe, senderNaksReceived);
             throw ex;
         }
     }
@@ -1561,31 +1532,37 @@ public final class DriverConductor implements Agent
         }
         else
         {
-            validateChannelSendTimestampOffset(udpChannel, channelEndpoint);
-            validateMtuForSndbuf(
-                params,
-                channelEndpoint.socketSndbufLength(),
-                ctx,
-                udpChannel.originalUriString(),
-                channelEndpoint.originalUriString());
-            validateChannelBufferLength(
-                SOCKET_RCVBUF_PARAM_NAME,
-                udpChannel.socketRcvbufLength(),
-                channelEndpoint.socketRcvbufLength(),
-                udpChannel.originalUriString(),
-                channelEndpoint.originalUriString());
-            validateChannelBufferLength(
-                SOCKET_SNDBUF_PARAM_NAME,
-                udpChannel.socketSndbufLength(),
-                channelEndpoint.socketSndbufLength(),
-                udpChannel.originalUriString(),
-                channelEndpoint.originalUriString());
+            validateUdpChannelAgainstSendChannelEndpoint(params, udpChannel, channelEndpoint);
         }
 
         return channelEndpoint;
     }
 
-    private void validateChannelSendTimestampOffset(
+    private void validateUdpChannelAgainstSendChannelEndpoint(
+        final PublicationParams params, final UdpChannel udpChannel, final SendChannelEndpoint channelEndpoint)
+    {
+        validateChannelSendTimestampOffset(udpChannel, channelEndpoint);
+        validateMtuForSndbuf(
+            params,
+            channelEndpoint.socketSndbufLength(),
+            ctx,
+            udpChannel.originalUriString(),
+            channelEndpoint.originalUriString());
+        validateChannelBufferLength(
+            SOCKET_RCVBUF_PARAM_NAME,
+            udpChannel.socketRcvbufLength(),
+            channelEndpoint.socketRcvbufLength(),
+            udpChannel.originalUriString(),
+            channelEndpoint.originalUriString());
+        validateChannelBufferLength(
+            SOCKET_SNDBUF_PARAM_NAME,
+            udpChannel.socketSndbufLength(),
+            channelEndpoint.socketSndbufLength(),
+            udpChannel.originalUriString(),
+            channelEndpoint.originalUriString());
+    }
+
+    private static void validateChannelSendTimestampOffset(
         final UdpChannel udpChannel, final SendChannelEndpoint channelEndpoint)
     {
         if (udpChannel.channelSendTimestampOffset() != channelEndpoint.udpChannel().channelSendTimestampOffset())
@@ -1598,7 +1575,7 @@ public final class DriverConductor implements Agent
         }
     }
 
-    private void validateReceiveTimestampOffset(
+    private static void validateReceiveTimestampOffset(
         final UdpChannel udpChannel, final ReceiveChannelEndpoint channelEndpoint)
     {
         if (udpChannel.channelReceiveTimestampOffset() !=
@@ -1674,11 +1651,10 @@ public final class DriverConductor implements Agent
         final ReceiveChannelEndpoint channelEndpoint = findExistingReceiveChannelEndpoint(udpChannel);
         if (null != channelEndpoint)
         {
-            validateReceiveTimestampOffset(udpChannel, channelEndpoint);
+            validateUdpChannelAgainstReceiveChannelEndpoint(params, udpChannel, channelEndpoint);
 
-            for (int i = 0, size = subscriptionLinks.size(); i < size; i++)
+            for (final SubscriptionLink subscription : subscriptionLinks)
             {
-                final SubscriptionLink subscription = subscriptionLinks.get(i);
                 final boolean matchesTag = !udpChannel.hasTag() || channelEndpoint.matchesTag(udpChannel);
 
                 if (matchesTag && subscription.matches(channelEndpoint, streamId, params))
@@ -1855,27 +1831,34 @@ public final class DriverConductor implements Agent
         }
         else
         {
-            validateInitialWindowForRcvBuf(
-                params,
-                udpChannel.originalUriString(),
-                channelEndpoint.socketRcvbufLength(),
-                ctx,
-                channelEndpoint.originalUriString());
-            validateChannelBufferLength(
-                SOCKET_RCVBUF_PARAM_NAME,
-                udpChannel.socketRcvbufLength(),
-                channelEndpoint.socketRcvbufLength(),
-                udpChannel.originalUriString(),
-                channelEndpoint.originalUriString());
-            validateChannelBufferLength(
-                SOCKET_SNDBUF_PARAM_NAME,
-                udpChannel.socketSndbufLength(),
-                channelEndpoint.socketSndbufLength(),
-                udpChannel.originalUriString(),
-                channelEndpoint.originalUriString());
+            validateUdpChannelAgainstReceiveChannelEndpoint(params, udpChannel, channelEndpoint);
         }
 
         return channelEndpoint;
+    }
+
+    private void validateUdpChannelAgainstReceiveChannelEndpoint(
+        final SubscriptionParams params, final UdpChannel udpChannel, final ReceiveChannelEndpoint channelEndpoint)
+    {
+        validateReceiveTimestampOffset(udpChannel, channelEndpoint);
+        validateInitialWindowForRcvBuf(
+            params,
+            udpChannel.originalUriString(),
+            channelEndpoint.socketRcvbufLength(),
+            ctx,
+            channelEndpoint.originalUriString());
+        validateChannelBufferLength(
+            SOCKET_RCVBUF_PARAM_NAME,
+            udpChannel.socketRcvbufLength(),
+            channelEndpoint.socketRcvbufLength(),
+            udpChannel.originalUriString(),
+            channelEndpoint.originalUriString());
+        validateChannelBufferLength(
+            SOCKET_SNDBUF_PARAM_NAME,
+            udpChannel.socketSndbufLength(),
+            channelEndpoint.socketSndbufLength(),
+            udpChannel.originalUriString(),
+            channelEndpoint.originalUriString());
     }
 
     private ReceiveChannelEndpoint findExistingReceiveChannelEndpoint(final UdpChannel udpChannel)
@@ -1981,7 +1964,7 @@ public final class DriverConductor implements Agent
         }
         catch (final Exception ex)
         {
-            CloseHelper.quietCloseAll(rawLog, publisherPosition, publisherLimit);
+            CloseHelper.quietCloseAll(publisherPosition, publisherLimit);
             throw ex;
         }
     }
@@ -2063,29 +2046,6 @@ public final class DriverConductor implements Agent
         }
 
         return subscriptionLink;
-    }
-
-    private static IpcPublication findSharedIpcPublication(
-        final ArrayList<IpcPublication> ipcPublications,
-        final long streamId,
-        final long responseCorrelationId)
-    {
-        IpcPublication ipcPublication = null;
-
-        for (int i = 0, size = ipcPublications.size(); i < size; i++)
-        {
-            final IpcPublication publication = ipcPublications.get(i);
-            if (publication.streamId() == streamId &&
-                !publication.isExclusive() &&
-                IpcPublication.State.ACTIVE == publication.state() &&
-                publication.responseCorrelationId() == responseCorrelationId)
-            {
-                ipcPublication = publication;
-                break;
-            }
-        }
-
-        return ipcPublication;
     }
 
     private void checkForSessionClash(
@@ -2224,12 +2184,14 @@ public final class DriverConductor implements Agent
             {
                 if (clientCommand.execute())
                 {
+                    CloseHelper.quietClose(clientCommand);
                     clientCommand = null;
                 }
             }
             catch (final Exception ex)
             {
                 clientCommandAdapter.onError(clientCommand.correlationId, ex);
+                CloseHelper.quietClose(clientCommand);
                 clientCommand = null;
             }
         }
@@ -2256,12 +2218,14 @@ public final class DriverConductor implements Agent
             {
                 if (driverCommand.execute())
                 {
+                    CloseHelper.quietClose(driverCommand);
                     driverCommand = null;
                 }
             }
             catch (final Exception ex)
             {
                 recordError(ex);
+                CloseHelper.quietClose(driverCommand);
                 driverCommand = null;
             }
             workCount++;
@@ -2426,9 +2390,13 @@ public final class DriverConductor implements Agent
         ctx.countedErrorHandler().onError(ex);
     }
 
-    private abstract static class Command
+    private abstract static class Command implements AutoCloseable
     {
         abstract boolean execute();
+
+        public void close()
+        {
+        }
     }
 
     private abstract static class ClientCommand extends Command
@@ -2449,13 +2417,14 @@ public final class DriverConductor implements Agent
         private final boolean isExclusive;
         private State state = State.INIT;
         private PublicationParams params;
-        private SendChannelEndpoint channelEndpoint;
         private UdpChannel udpChannel;
+        private SendChannelEndpoint channelEndpoint;
         private PublicationImage responsePublicationImage;
         private NetworkPublication publication;
         private boolean isNewPublication;
         private CommandResult<UdpChannel> parseChannelResult;
         private CommandResult<RawLog> logBufferResult;
+        private RawLog rawLog;
 
         private AddNetworkPublicationCommand(
             final String channel,
@@ -2489,19 +2458,19 @@ public final class DriverConductor implements Agent
                 validate();
             }
 
-            if (State.RESOLVE_ENDPOINT == state)
-            {
-                resolveEndpoint();
-            }
-
             if (State.RESOLVE_PUBLICATION == state)
             {
                 resolvePublication();
             }
 
-            if (State.CREATE_LOG_BUFFER == state)
+            if (State.AWAIT_LOG_BUFFER == state)
             {
-                createLogBuffer();
+                awaitLogBuffer();
+            }
+
+            if (State.CREATE_PUBLICATION == state)
+            {
+                createPublication();
             }
 
             if (State.LINK_PUBLICATION == state)
@@ -2510,6 +2479,14 @@ public final class DriverConductor implements Agent
             }
 
             return State.DONE == state;
+        }
+
+        public void close()
+        {
+            if (null != rawLog)
+            {
+                nativeResourceAgentProxy.freeLogBuffer(rawLog);
+            }
         }
 
         private void parseChannel()
@@ -2529,26 +2506,29 @@ public final class DriverConductor implements Agent
             validateControlForPublication(udpChannel);
             validateResponseSubscription(params);
 
-            state = State.RESOLVE_ENDPOINT;
-        }
-
-        private void resolveEndpoint()
-        {
-            channelEndpoint = getOrCreateSendChannelEndpoint(params, udpChannel, correlationId);
-
-            if (channelEndpoint.isActive())
-            {
-                responsePublicationImage = findResponsePublicationImage(params);
-                state = State.RESOLVE_PUBLICATION;
-            }
+            state = State.RESOLVE_PUBLICATION;
         }
 
         private void resolvePublication()
         {
-            if (!isExclusive)
+            channelEndpoint = findExistingSendChannelEndpoint(udpChannel);
+            if (null != channelEndpoint)
             {
-                publication =
-                    findPublication(networkPublications, streamId, channelEndpoint, params.responseCorrelationId);
+                if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
+                {
+                    clientProxy.onError(
+                        clientId,
+                        RESOURCE_TEMPORARILY_UNAVAILABLE,
+                        "SendChannelEndpoint found in CLOSING state, please retry");
+                    state = State.DONE;
+                    return;
+                }
+                validateUdpChannelAgainstSendChannelEndpoint(params, udpChannel, channelEndpoint);
+
+                if (!isExclusive)
+                {
+                    publication = findPublication(streamId, channelEndpoint, params.responseCorrelationId);
+                }
             }
 
             if (null == publication)
@@ -2561,16 +2541,29 @@ public final class DriverConductor implements Agent
                     params.termLength = TERM_MIN_LENGTH;
                 }
 
+                final int socketRcvBufLength;
+                final int socketSndBufLength;
+                if (null != channelEndpoint)
+                {
+                    socketRcvBufLength = channelEndpoint.socketRcvbufLength();
+                    socketSndBufLength = channelEndpoint.socketSndbufLength();
+                }
+                else
+                {
+                    socketRcvBufLength = udpChannel.socketRcvbufLength();
+                    socketSndBufLength = udpChannel.socketSndbufLength();
+                }
+
                 logBufferResult = nativeResourceAgentProxy.newNetworkPublicationLog(
                     isExclusive,
                     streamId,
                     correlationId,
-                    channelEndpoint.socketRcvbufLength(),
-                    channelEndpoint.socketSndbufLength(),
+                    socketRcvBufLength,
+                    socketSndBufLength,
                     params,
                     udpChannel.hasGroupSemantics());
 
-                state = State.CREATE_LOG_BUFFER;
+                state = State.AWAIT_LOG_BUFFER;
             }
             else
             {
@@ -2587,30 +2580,50 @@ public final class DriverConductor implements Agent
                 validateSpiesSimulateConnection(
                     params, publication.spiesSimulateConnection(), channel, publication.channel());
 
-                isNewPublication = false;
+                responsePublicationImage = findResponsePublicationImage();
+
                 state = State.LINK_PUBLICATION;
             }
         }
 
-        private void createLogBuffer()
+        private void awaitLogBuffer()
         {
-            final RawLog rawLog;
             if (null != (rawLog = logBufferResult.get()))
             {
-                publication = newNetworkPublication(
-                    correlationId,
-                    clientId,
-                    streamId,
-                    channel,
-                    udpChannel,
-                    channelEndpoint,
-                    rawLog,
-                    params,
-                    isExclusive);
-
-                isNewPublication = true;
-                state = State.LINK_PUBLICATION;
+                state = State.CREATE_PUBLICATION;
             }
+        }
+
+        private void createPublication()
+        {
+            responsePublicationImage = findResponsePublicationImage();
+
+            channelEndpoint = getOrCreateSendChannelEndpoint(params, udpChannel, correlationId);
+            if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
+            {
+                clientProxy.onError(
+                    clientId,
+                    RESOURCE_TEMPORARILY_UNAVAILABLE,
+                    "SendChannelEndpoint found in CLOSING state, please retry");
+                state = State.DONE;
+                return;
+            }
+
+            publication = newNetworkPublication(
+                correlationId,
+                clientId,
+                streamId,
+                channel,
+                udpChannel,
+                channelEndpoint,
+                rawLog,
+                params,
+                isExclusive);
+
+            rawLog = null; // ownership transferred to the NetworkPublication
+
+            isNewPublication = true;
+            state = State.LINK_PUBLICATION;
         }
 
         private void linkPublication()
@@ -2640,14 +2653,52 @@ public final class DriverConductor implements Agent
             state = State.DONE;
         }
 
+        private PublicationImage findResponsePublicationImage()
+        {
+            if (!params.isResponse)
+            {
+                return null;
+            }
+
+            if (NULL_VALUE == params.responseCorrelationId)
+            {
+                throw new IllegalArgumentException(
+                    "control-mode=response was specified, but no response-correlation-id set");
+            }
+
+            if (PROTOTYPE_VALUE_CORRELATION_ID == params.responseCorrelationId)
+            {
+                return null;
+            }
+
+            for (final PublicationImage publicationImage : publicationImages)
+            {
+                if (publicationImage.correlationId() == params.responseCorrelationId)
+                {
+                    if (publicationImage.hasSendResponseSetup())
+                    {
+                        return publicationImage;
+                    }
+                    else
+                    {
+                        throw new IllegalArgumentException(
+                            "image.correlationId=" + params.responseCorrelationId +
+                                " did not request a response channel");
+                    }
+                }
+            }
+
+            throw new IllegalArgumentException("image.correlationId=" + params.responseCorrelationId + " not found");
+        }
+
         private enum State
         {
             INIT,
             PARSE_CHANNEL,
             VALIDATE,
-            RESOLVE_ENDPOINT,
             RESOLVE_PUBLICATION,
-            CREATE_LOG_BUFFER,
+            AWAIT_LOG_BUFFER,
+            CREATE_PUBLICATION,
             LINK_PUBLICATION,
             DONE
         }
@@ -2665,6 +2716,7 @@ public final class DriverConductor implements Agent
         private IpcPublication publication;
         private boolean isNewPublication;
         private CommandResult<RawLog> logBufferResult;
+        private RawLog rawLog;
 
         AddIpcPublicationCommand(
             final String channel,
@@ -2692,9 +2744,14 @@ public final class DriverConductor implements Agent
                 resolvePublication();
             }
 
-            if (State.CREATE_LOG_BUFFER == state)
+            if (State.AWAIT_LOG_BUFFER == state)
             {
-                createLogBuffer();
+                awaitLogBuffer();
+            }
+
+            if (State.CREATE_PUBLICATION == state)
+            {
+                createPublication();
             }
 
             if (State.LINK_PUBLICATION == state)
@@ -2705,15 +2762,19 @@ public final class DriverConductor implements Agent
             return State.DONE == state;
         }
 
-        private void createLogBuffer()
+        public void close()
         {
-            final RawLog rawLog = logBufferResult.get();
             if (null != rawLog)
             {
-                publication =
-                    newIpcPublication(correlationId, clientId, streamId, channel, isExclusive, params, rawLog);
-                isNewPublication = true;
-                state = State.LINK_PUBLICATION;
+                nativeResourceAgentProxy.freeLogBuffer(rawLog);
+            }
+        }
+
+        private void awaitLogBuffer()
+        {
+            if (null != (rawLog = logBufferResult.get()))
+            {
+                state = State.CREATE_PUBLICATION;
             }
         }
 
@@ -2728,7 +2789,7 @@ public final class DriverConductor implements Agent
         {
             if (!isExclusive)
             {
-                publication = findSharedIpcPublication(ipcPublications, streamId, params.responseCorrelationId);
+                publication = findSharedIpcPublication(streamId, params.responseCorrelationId);
             }
 
             if (null == publication)
@@ -2738,7 +2799,7 @@ public final class DriverConductor implements Agent
                 logBufferResult = nativeResourceAgentProxy.newIpcPublicationLog(
                     isExclusive, streamId, correlationId, params);
 
-                state = State.CREATE_LOG_BUFFER;
+                state = State.AWAIT_LOG_BUFFER;
             }
             else
             {
@@ -2752,9 +2813,19 @@ public final class DriverConductor implements Agent
                     publication.startingTermId(),
                     publication.startingTermOffset());
 
-                isNewPublication = false;
                 state = State.LINK_PUBLICATION;
             }
+        }
+
+        private void createPublication()
+        {
+            publication =
+                newIpcPublication(correlationId, clientId, streamId, channel, isExclusive, params, rawLog);
+            isNewPublication = true;
+
+            rawLog = null; // ownership transferred to the IpcPublication
+
+            state = State.LINK_PUBLICATION;
         }
 
         private void linkPublication()
@@ -2783,7 +2854,8 @@ public final class DriverConductor implements Agent
         {
             INIT,
             RESOLVE_PUBLICATION,
-            CREATE_LOG_BUFFER,
+            AWAIT_LOG_BUFFER,
+            CREATE_PUBLICATION,
             LINK_PUBLICATION,
             DONE
         }
@@ -2795,11 +2867,11 @@ public final class DriverConductor implements Agent
         private final int streamId;
         private final long registrationId;
         private final long clientId;
-        private State state = State.INIT;
+        private final CommandResult<UdpChannel> parseChannelResult;
+        private State state;
         private SubscriptionParams params;
         private ReceiveChannelEndpoint channelEndpoint;
         private UdpChannel udpChannel;
-        private CommandResult<UdpChannel> parseChannelResult;
 
         private AddNetworkSubscriptionCommand(
             final String channel,
@@ -2812,27 +2884,27 @@ public final class DriverConductor implements Agent
             this.streamId = streamId;
             this.registrationId = registrationId;
             this.clientId = clientId;
+            parseChannelResult = nativeResourceAgentProxy.parseChannel(channel, false);
+            state = State.AWAITING_CHANNEL_PARSE;
         }
 
         boolean execute()
         {
-            if (State.INIT == state)
-            {
-                parseChannelResult = nativeResourceAgentProxy.parseChannel(channel, false);
-                state = State.AWAITING_CHANNEL_PARSE;
-            }
             if (State.AWAITING_CHANNEL_PARSE == state)
             {
                 awaitingChannelParse();
             }
+
             if (State.VALIDATING == state)
             {
                 validating();
             }
+
             if (State.RESOLVING_ENDPOINT == state)
             {
                 resolvingEndpoint();
             }
+
             if (State.CREATING_LINKS == state)
             {
                 creatingLinks();
@@ -2864,8 +2936,15 @@ public final class DriverConductor implements Agent
         private void resolvingEndpoint()
         {
             channelEndpoint = getOrCreateReceiveChannelEndpoint(params, udpChannel, registrationId);
-
-            if (ChannelEndpointStatus.ACTIVE == channelEndpoint.status())
+            if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
+            {
+                clientProxy.onError(
+                    registrationId,
+                    RESOURCE_TEMPORARILY_UNAVAILABLE,
+                    "ReceiveChannelEndpoint found in CLOSING state, please retry");
+                state = State.DONE;
+            }
+            else
             {
                 state = State.CREATING_LINKS;
             }
@@ -2896,7 +2975,6 @@ public final class DriverConductor implements Agent
 
         private enum State
         {
-            INIT,
             AWAITING_CHANNEL_PARSE,
             VALIDATING,
             RESOLVING_ENDPOINT,
@@ -2990,8 +3068,7 @@ public final class DriverConductor implements Agent
 
             if (null == mdsSubscriptionLink)
             {
-                throw new ControlProtocolException(
-                    UNKNOWN_SUBSCRIPTION, "unknown MDS subscription: " + registrationId);
+                throw new UnknownSubscriptionException("unknown MDS subscription: " + registrationId);
             }
 
             final SpySubscriptionLink subscriptionLink = new SpySubscriptionLink(
@@ -3073,8 +3150,7 @@ public final class DriverConductor implements Agent
 
             if (null == mdsSubscriptionLink)
             {
-                throw new ControlProtocolException(
-                    UNKNOWN_SUBSCRIPTION, "unknown MDS subscription: " + registrationId);
+                throw new UnknownSubscriptionException("unknown MDS subscription: " + registrationId);
             }
 
             receiveChannelEndpoint = mdsSubscriptionLink.channelEndpoint();
@@ -3168,7 +3244,7 @@ public final class DriverConductor implements Agent
 
             if (null == receiveChannelEndpoint)
             {
-                throw new ControlProtocolException(UNKNOWN_SUBSCRIPTION, "unknown subscription: " + registrationId);
+                throw new UnknownSubscriptionException("unknown subscription: " + registrationId);
             }
 
             receiveChannelEndpoint.validateAllowsDestinationControl();
