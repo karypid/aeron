@@ -58,7 +58,8 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[C]** Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
 * **[Client/Java]** Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
 * **[Client/C]** Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
-* **[Cluster]** Added VersionValidator interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
+* **[C/C{plus}{plus} Wrapper]** Add PowerPC 64-bit (`ppc64le`) support to C and C++ clients. (https://github.com/aeron-io/aeron/pull/2060[#2060])
+* **[Cluster]** Added `VersionValidator` interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
