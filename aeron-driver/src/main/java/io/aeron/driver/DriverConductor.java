@@ -56,7 +56,6 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Object2ObjectHashMap;
 import org.agrona.collections.ObjectHashSet;
 import org.agrona.concurrent.Agent;
-import org.agrona.concurrent.AgentInvoker;
 import org.agrona.concurrent.CachedEpochClock;
 import org.agrona.concurrent.CachedNanoClock;
 import org.agrona.concurrent.EpochClock;
@@ -164,11 +163,10 @@ public final class DriverConductor implements Agent
     private final MutableDirectBuffer tempBuffer;
     private final AtomicCounter imagesRejected;
     private final DutyCycleTracker dutyCycleTracker;
-    private final AgentInvoker nativeResourceAgentInvoker;
     private ClientCommand clientCommand;
     private Command driverCommand;
 
-    DriverConductor(final Context ctx, final AgentInvoker nativeResourceAgentInvoker)
+    DriverConductor(final Context ctx)
     {
         this.ctx = ctx;
         timerIntervalNs = ctx.timerIntervalNs();
@@ -189,7 +187,6 @@ public final class DriverConductor implements Agent
         countersManager = ctx.countersManager();
 
         nativeResourceAgentProxy = ctx.nativeResourceAgentProxy();
-        this.nativeResourceAgentInvoker = nativeResourceAgentInvoker;
 
         clientCommandAdapter = new ClientCommandAdapter(ctx.countedErrorHandler(), toDriverCommands, clientProxy, this);
 
@@ -208,11 +205,6 @@ public final class DriverConductor implements Agent
         timerCheckDeadlineNs = nowNs + timerIntervalNs;
         clockUpdateDeadlineNs = nowNs + CLOCK_UPDATE_INTERNAL_NS;
         timeOfLastToDriverPositionChangeNs = nowNs;
-
-        if (null != nativeResourceAgentInvoker)
-        {
-            nativeResourceAgentInvoker.start();
-        }
 
         final SystemCounters systemCounters = ctx.systemCounters();
         systemCounters.get(RESOLUTION_CHANGES).appendToLabel(": driverName=" + ctx.resolverName());
@@ -263,10 +255,6 @@ public final class DriverConductor implements Agent
         workCount += processClientCommands();
         workCount += drainCommandQueue();
         workCount += trackStreamPositions(workCount, nowNs);
-        if (null != nativeResourceAgentInvoker)
-        {
-            nativeResourceAgentInvoker.invoke();
-        }
 
         return workCount;
     }

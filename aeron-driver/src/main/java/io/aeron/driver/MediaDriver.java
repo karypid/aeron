@@ -122,7 +122,7 @@ import static io.aeron.driver.Configuration.validateUntetheredTimeouts;
 import static io.aeron.driver.Configuration.validateValueRange;
 import static io.aeron.driver.reports.LossReportUtil.mapLossReport;
 import static io.aeron.driver.status.SystemCounterDescriptor.AERON_VERSION;
-import static io.aeron.driver.status.SystemCounterDescriptor.ASYNC_EXECUTOR_PROXY_FAILS;
+import static io.aeron.driver.status.SystemCounterDescriptor.NATIVE_RESOURCE_AGENT_PROXY_FAILS;
 import static io.aeron.driver.status.SystemCounterDescriptor.BYTES_CURRENTLY_MAPPED;
 import static io.aeron.driver.status.SystemCounterDescriptor.CONDUCTOR_CYCLE_TIME_THRESHOLD_EXCEEDED;
 import static io.aeron.driver.status.SystemCounterDescriptor.CONDUCTOR_MAX_CYCLE_TIME;
@@ -159,7 +159,6 @@ import static org.agrona.concurrent.status.CountersReader.METADATA_LENGTH;
 public final class MediaDriver implements AutoCloseable
 {
     private boolean wasHighResTimerEnabled;
-    private final AgentInvoker nativeResourceAgentInvoker;
     private final AgentRunner nativeResourceAgentRunner;
     private final AgentInvoker sharedInvoker;
     private final AgentRunner sharedRunner;
@@ -207,16 +206,14 @@ public final class MediaDriver implements AutoCloseable
             final AtomicCounter errorCounter = systemCounters.get(ERRORS);
             final ErrorHandler errorHandler = ctx.errorHandler();
 
-            final TimeTrackingNameResolver nameResolver = new TimeTrackingNameResolver(
-                ctx.nameResolver(),
-                ctx.nanoClock(),
-                ctx.nameResolverTimeTracker());
-            final NativeResourceAgent nativeResourceAgent = new NativeResourceAgent(nameResolver, ctx);
-            ctx.nativeResourceAgentProxy().asyncExecutor(nativeResourceAgent);
+            final NativeResourceAgent nativeResourceAgent = new NativeResourceAgent(ctx);
+            ctx.nativeResourceAgentProxy().nativeResourceAgent(nativeResourceAgent);
 
+            final DriverConductor conductor = new DriverConductor(ctx);
             final Receiver receiver = new Receiver(ctx);
             final Sender sender = new Sender(ctx);
 
+            ctx.driverConductorProxy().driverConductor(conductor);
             ctx.receiverProxy().receiver(receiver);
             ctx.senderProxy().sender(sender);
 
@@ -224,16 +221,11 @@ public final class MediaDriver implements AutoCloseable
             {
                 case INVOKER:
                 {
-                    nativeResourceAgentInvoker = new AgentInvoker(errorHandler, errorCounter, nativeResourceAgent);
-
-                    final DriverConductor conductor =
-                        new DriverConductor(ctx, nativeResourceAgentInvoker);
-                    ctx.driverConductorProxy().driverConductor(conductor);
-
                     sharedInvoker = new AgentInvoker(
                         errorHandler,
                         errorCounter,
-                        new NamedCompositeAgent(ctx.aeronDirectoryName(), sender, receiver, conductor));
+                        new NamedCompositeAgent(
+                            ctx.aeronDirectoryName(), sender, receiver, conductor, nativeResourceAgent));
                     sharedRunner = null;
                     sharedNetworkRunner = null;
                     conductorRunner = null;
@@ -245,17 +237,12 @@ public final class MediaDriver implements AutoCloseable
 
                 case SHARED:
                 {
-                    nativeResourceAgentInvoker = new AgentInvoker(errorHandler, errorCounter, nativeResourceAgent);
-
-                    final DriverConductor conductor =
-                        new DriverConductor(ctx, nativeResourceAgentInvoker);
-                    ctx.driverConductorProxy().driverConductor(conductor);
-
                     sharedRunner = new AgentRunner(
                         ctx.sharedIdleStrategy(),
                         errorHandler,
                         errorCounter,
-                        new NamedCompositeAgent(ctx.aeronDirectoryName(), sender, receiver, conductor));
+                        new NamedCompositeAgent(
+                            ctx.aeronDirectoryName(), sender, receiver, conductor, nativeResourceAgent));
                     sharedNetworkRunner = null;
                     conductorRunner = null;
                     receiverRunner = null;
@@ -267,10 +254,6 @@ public final class MediaDriver implements AutoCloseable
 
                 case SHARED_NETWORK:
                 {
-                    final DriverConductor conductor =
-                        new DriverConductor(ctx, null);
-                    ctx.driverConductorProxy().driverConductor(conductor);
-
                     sharedNetworkRunner = new AgentRunner(
                         ctx.sharedNetworkIdleStrategy(),
                         errorHandler,
@@ -287,17 +270,12 @@ public final class MediaDriver implements AutoCloseable
                     receiverRunner = null;
                     senderRunner = null;
                     sharedInvoker = null;
-                    nativeResourceAgentInvoker = null;
                     break;
                 }
 
                 case DEDICATED:
                 default:
                 {
-                    final DriverConductor conductor =
-                        new DriverConductor(ctx, null);
-                    ctx.driverConductorProxy().driverConductor(conductor);
-
                     senderRunner = new AgentRunner(ctx.senderIdleStrategy(), errorHandler, errorCounter, sender);
                     receiverRunner = new AgentRunner(ctx.receiverIdleStrategy(), errorHandler, errorCounter, receiver);
                     conductorRunner = new AgentRunner(
@@ -310,7 +288,6 @@ public final class MediaDriver implements AutoCloseable
                     sharedNetworkRunner = null;
                     sharedRunner = null;
                     sharedInvoker = null;
-                    nativeResourceAgentInvoker = null;
                     break;
                 }
             }
@@ -456,7 +433,6 @@ public final class MediaDriver implements AutoCloseable
         try
         {
             CloseHelper.closeAll(
-                nativeResourceAgentInvoker,
                 nativeResourceAgentRunner,
                 sharedInvoker,
                 sharedRunner,
@@ -4520,7 +4496,7 @@ public final class MediaDriver implements AutoCloseable
                 driverCommandQueue);
             nativeResourceAgentProxy = new NativeResourceAgentProxy(
                 nativeResourceAgentCommandQueue,
-                systemCounters.get(ASYNC_EXECUTOR_PROXY_FAILS));
+                systemCounters.get(NATIVE_RESOURCE_AGENT_PROXY_FAILS));
 
             if (null == controlTransportPoller)
             {

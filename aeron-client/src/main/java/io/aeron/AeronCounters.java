@@ -327,10 +327,11 @@ public final class AeronCounters
     public static final int SYSTEM_COUNTER_ID_STATUS_MESSAGES_REJECTED = 44;
 
     /**
-     * Counter id for failed offers to the async executor proxy.
+     * Counter id for failed offers to the native resource agent proxy.
+     * @since 1.51.0
      */
     @AeronCounter
-    public static final int SYSTEM_COUNTER_ID_ASYNC_EXECUTOR_PROXY_FAILS = 45;
+    public static final int SYSTEM_COUNTER_ID_NATIVE_RESOURCE_AGENT_PROXY_FAILS = 45;
 
     // Client/driver counters
     /**

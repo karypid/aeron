@@ -20,6 +20,7 @@ import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.driver.status.SystemCounters;
 import org.agrona.concurrent.CountedErrorHandler;
 import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
+import org.agrona.concurrent.SystemNanoClock;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,8 +52,10 @@ class NativeResourceAgentTest
             .resourceFreeLimit(3)
             .systemCounters(systemCounters)
             .nameResolver(nameResolver)
-            .countedErrorHandler(mock(CountedErrorHandler.class));
-        executor = new NativeResourceAgent(nameResolver, ctx);
+            .countedErrorHandler(mock(CountedErrorHandler.class))
+            .nanoClock(SystemNanoClock.INSTANCE)
+            .nameResolverTimeTracker(mock(DutyCycleTracker.class));
+        executor = new NativeResourceAgent(ctx);
     }
 
     @Test

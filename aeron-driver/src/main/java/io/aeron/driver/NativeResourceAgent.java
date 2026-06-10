@@ -78,16 +78,19 @@ final class NativeResourceAgent implements Agent
 {
     private final DataHeaderFlyweight defaultDataHeader = new DataHeaderFlyweight(createDefaultHeader(0, 0, 0));
     private final ArrayDeque<RawLog> logBuffersToFree = new ArrayDeque<>();
-    private final NameResolverAgent nameResolver;
+    private final TimeTrackingNameResolver nameResolver;
     private final OneToOneConcurrentArrayQueue<Runnable> taskQueue;
     private final AtomicCounter freeFailsCounter;
     private final int freeLimit;
     private final LogFactory logFactory;
     private final MediaDriver.Context ctx;
 
-    NativeResourceAgent(final NameResolverAgent nameResolver, final MediaDriver.Context ctx)
+    NativeResourceAgent(final MediaDriver.Context ctx)
     {
-        this.nameResolver = nameResolver;
+        this.nameResolver = new TimeTrackingNameResolver(
+            ctx.nameResolver(),
+            ctx.nanoClock(),
+            ctx.nameResolverTimeTracker());
         this.taskQueue = ctx.nativeResourceAgentCommandQueue();
         this.freeFailsCounter = ctx.systemCounters().get(SystemCounterDescriptor.FREE_FAILS);
         this.freeLimit = ctx.resourceFreeLimit();

@@ -35,7 +35,7 @@ final class NativeResourceAgentProxy extends CommandProxy
         super(commandQueue, failCount);
     }
 
-    void asyncExecutor(final NativeResourceAgent nativeResourceAgent)
+    void nativeResourceAgent(final NativeResourceAgent nativeResourceAgent)
     {
         this.nativeResourceAgent = nativeResourceAgent;
     }

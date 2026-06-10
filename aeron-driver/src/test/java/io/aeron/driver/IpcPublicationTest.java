@@ -23,7 +23,6 @@ import io.aeron.driver.status.SystemCounters;
 import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.test.Tests;
 import org.agrona.ErrorHandler;
-import org.agrona.concurrent.AgentInvoker;
 import org.agrona.concurrent.CachedEpochClock;
 import org.agrona.concurrent.CachedNanoClock;
 import org.agrona.concurrent.CountedErrorHandler;
@@ -61,6 +60,7 @@ class IpcPublicationTest
 
     private DriverProxy driverProxy;
     private DriverConductor driverConductor;
+    private NativeResourceAgent nativeResourceAgent;
 
     @BeforeEach
     void setUp()
@@ -109,17 +109,16 @@ class IpcPublicationTest
             .nameResolverTimeTracker(new DutyCycleTracker())
             .resourceFreeLimit(1);
 
-        final NativeResourceAgent nativeResourceAgent = new NativeResourceAgent(DefaultNameResolver.INSTANCE, ctx);
-        nativeResourceAgentProxy.asyncExecutor(nativeResourceAgent);
-        final AgentInvoker asyncExecutorInvoker =
-            new AgentInvoker(errorHandler, mock(AtomicCounter.class), nativeResourceAgent);
+        nativeResourceAgent = new NativeResourceAgent(ctx);
+        nativeResourceAgentProxy.nativeResourceAgent(nativeResourceAgent);
 
         driverProxy = new DriverProxy(toDriverCommands, CLIENT_ID);
-        driverConductor = new DriverConductor(ctx, asyncExecutorInvoker);
+        driverConductor = new DriverConductor(ctx);
         driverConductor.onStart();
 
         driverProxy.addPublication(CommonContext.IPC_CHANNEL, STREAM_ID);
         driverConductor.doWork();
+        nativeResourceAgent.doWork();
         driverConductor.doWork();
 
         ipcPublication = driverConductor.findSharedIpcPublication(STREAM_ID, Aeron.NULL_VALUE);
@@ -151,6 +150,7 @@ class IpcPublicationTest
     {
         driverProxy.addSubscription(CommonContext.IPC_CHANNEL, STREAM_ID);
         driverConductor.doWork();
+        nativeResourceAgent.doWork();
 
         assertThat(publisherLimit.get(), is(greaterThan(0L)));
     }
