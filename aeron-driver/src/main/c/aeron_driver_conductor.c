@@ -1986,25 +1986,25 @@ aeron_ipc_publication_t *aeron_driver_conductor_get_or_add_ipc_publication(
     {
         aeron_ipc_publication_t *pub_entry = conductor->ipc_publications.array[i].publication;
 
-        if (stream_id == pub_entry->stream_id)
+        if (stream_id == pub_entry->stream_id &&
+            (AERON_IPC_PUBLICATION_STATE_ACTIVE == pub_entry->conductor_fields.state ||
+            AERON_IPC_PUBLICATION_STATE_DRAINING == pub_entry->conductor_fields.state))
         {
             if (AERON_IPC_PUBLICATION_STATE_ACTIVE == pub_entry->conductor_fields.state &&
-                NULL == publication && !is_exclusive && !pub_entry->is_exclusive &&
+                NULL == publication &&
+                !is_exclusive &&
+                !pub_entry->is_exclusive &&
                 pub_entry->conductor_fields.response_correlation_id == params->response_correlation_id)
             {
                 publication = pub_entry;
             }
 
-            if (AERON_IPC_PUBLICATION_STATE_ACTIVE == pub_entry->conductor_fields.state ||
-                AERON_IPC_PUBLICATION_STATE_DRAINING == pub_entry->conductor_fields.state)
+            if (params->has_session_id && pub_entry->session_id == params->session_id)
             {
-                if (params->has_session_id && pub_entry->session_id == params->session_id)
-                {
-                    is_session_id_in_use = true;
-                }
-
-                aeron_driver_conductor_track_session_id_offsets(conductor, &session_id_offsets, pub_entry->session_id);
+                is_session_id_in_use = true;
             }
+
+            aeron_driver_conductor_track_session_id_offsets(conductor, &session_id_offsets, pub_entry->session_id);
         }
     }
 
@@ -2228,14 +2228,16 @@ aeron_network_publication_t *aeron_driver_conductor_get_or_add_network_publicati
 
     bool is_session_id_in_use = false;
 
-    // TODO: Extract
     for (size_t i = 0; i < conductor->network_publications.length; i++)
     {
         aeron_network_publication_t *pub_entry = conductor->network_publications.array[i].publication;
 
-        if (endpoint == pub_entry->endpoint && stream_id == pub_entry->stream_id)
+        if (endpoint == pub_entry->endpoint &&
+            stream_id == pub_entry->stream_id &&
+            AERON_NETWORK_PUBLICATION_STATE_DONE != pub_entry->conductor_fields.state)
         {
             if (AERON_NETWORK_PUBLICATION_STATE_ACTIVE == pub_entry->conductor_fields.state &&
+                NULL == publication &&
                 !is_exclusive &&
                 !pub_entry->is_exclusive &&
                 pub_entry->response_correlation_id == params->response_correlation_id)
