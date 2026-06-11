@@ -50,6 +50,8 @@ be an offset into the CPU set for the processes current CPU group.
 * **[Driver/C]** CPU affinity is now supported for the background thread used for longer operations, e.g. name
 resolution.
 
+* **Breaking:** **[Driver/C]** `aeron_spsc_rb_writev` was removed.
+
 === Changelog
 
 * **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
@@ -61,6 +63,7 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[C/C{plus}{plus} Wrapper]** Add PowerPC 64-bit (`ppc64le`) support to C and C++ clients. (https://github.com/aeron-io/aeron/pull/2060[#2060])
 * **[Cluster]** Added `VersionValidator` interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
 * **[Driver/C]** Fix `session-id` checks for network publications.
+* **[Driver/C]** Remove `aeron_spsc_rb_writev` and restore compilation on Windows.
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
