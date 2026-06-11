@@ -17,31 +17,6 @@
 #include "aeron_driver_native_resource_agent.h"
 #include "aeron_driver_native_resource_agent_proxy.h"
 
-static aeron_driver_native_resource_agent_task_t *aeron_driver_native_resource_agent_task_allocate(
-    aeron_driver_native_resource_agent_t *native_resource_agent,
-    aeron_driver_native_resource_agent_task_on_execute_func_t on_execute,
-    aeron_driver_native_resource_agent_task_on_complete_func_t on_complete,
-    aeron_driver_native_resource_agent_task_on_cancel_func_t on_cancel,
-    void *clientd)
-{
-    aeron_driver_native_resource_agent_task_t *task;
-
-    if (aeron_alloc((void **)&task, sizeof(aeron_driver_native_resource_agent_task_t)) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return NULL;
-    }
-
-    task->native_resource_agent = native_resource_agent;
-    task->on_execute = on_execute;
-    task->on_complete = on_complete;
-    task->on_cancel = on_cancel;
-    task->clientd = clientd;
-    task->result = -1;
-
-    return task;
-}
-
 static void aeron_driver_native_resource_agent_proxy_offer(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy, void *cmd, size_t length)
 {
@@ -68,15 +43,16 @@ int aeron_driver_native_resource_agent_proxy_submit(
     aeron_driver_native_resource_agent_task_on_cancel_func_t on_cancel,
     void *clientd)
 {
-    aeron_driver_native_resource_agent_task_t *task = aeron_driver_native_resource_agent_task_allocate(
-           native_resource_agent_proxy->native_resource_agent, on_execute, on_complete, on_cancel, clientd);
-    if (NULL == task)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
+    aeron_driver_native_resource_agent_task_t task;
+    task.native_resource_agent = native_resource_agent_proxy->native_resource_agent;
+    task.on_execute = on_execute;
+    task.on_complete = on_complete;
+    task.on_cancel = on_cancel;
+    task.clientd = clientd;
+    task.result = -1;
+
     aeron_driver_native_resource_agent_proxy_offer(
-        native_resource_agent_proxy, task, sizeof(aeron_driver_native_resource_agent_task_t));
+        native_resource_agent_proxy, &task, sizeof(aeron_driver_native_resource_agent_task_t));
     return 0;
 }
 
