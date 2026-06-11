@@ -46,7 +46,7 @@ static void aeron_driver_native_resource_agent_proxy_offer(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy, void *cmd, size_t length)
 {
     aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_mpsc_rb_write(native_resource_agent_proxy->command_queue, 1, cmd, length)))
+    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(native_resource_agent_proxy->command_queue, 1, cmd, length)))
     {
         aeron_counter_increment_release(native_resource_agent_proxy->fail_counter);
         sched_yield();
@@ -85,7 +85,7 @@ void aeron_driver_native_resource_agent_proxy_on_task_complete(
     aeron_driver_native_resource_agent_task_t *task)
 {
     aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_mpsc_rb_write(
+    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(
         native_resource_agent_proxy->result_queue, 1, task, sizeof(aeron_driver_native_resource_agent_task_t))))
     {
         aeron_counter_increment_release(native_resource_agent_proxy->fail_counter);

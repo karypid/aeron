@@ -22,7 +22,7 @@
 void aeron_driver_receiver_proxy_offer(aeron_driver_receiver_proxy_t *receiver_proxy, void *cmd, size_t length)
 {
     aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_mpsc_rb_write(receiver_proxy->command_queue, 1, cmd, length)))
+    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(receiver_proxy->command_queue, 1, cmd, length)))
     {
         aeron_counter_increment_release(receiver_proxy->fail_counter);
         sched_yield();

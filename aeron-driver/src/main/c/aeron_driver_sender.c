@@ -139,7 +139,7 @@ int aeron_driver_sender_do_work(void *clientd)
     aeron_duty_cycle_tracker_t *tracker = sender->context->sender_duty_cycle_tracker;
     tracker->measure_and_update(tracker->state, now_ns);
 
-    int work_count = (int)aeron_mpsc_rb_read(
+    int work_count = (int)aeron_spsc_rb_read(
         sender->sender_proxy.command_queue, aeron_driver_sender_on_rb_command_queue, sender, AERON_COMMAND_DRAIN_LIMIT);
 
     int64_t bytes_received = 0;

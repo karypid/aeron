@@ -18,6 +18,7 @@
 #define AERON_DRIVER_RECEIVER_PROXY_H
 
 #include "aeron_driver_context.h"
+#include "concurrent/aeron_spsc_rb.h"
 
 typedef struct aeron_driver_receiver_stct aeron_driver_receiver_t;
 typedef struct aeron_receive_channel_endpoint_stct aeron_receive_channel_endpoint_t;
@@ -32,7 +33,7 @@ typedef struct aeron_driver_receiver_proxy_stct
         aeron_on_endpoint_change_func_t on_add_endpoint;
         aeron_on_endpoint_change_func_t on_remove_endpoint;
     } log;
-    aeron_mpsc_rb_t *command_queue;
+    aeron_spsc_rb_t *command_queue;
     int64_t *fail_counter;
 }
 aeron_driver_receiver_proxy_t;

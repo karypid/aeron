@@ -18,6 +18,7 @@
 #define AERON_DRIVER_NATIVE_RESOURCE_AGENT_PROXY_H
 
 #include "aeron_driver_context.h"
+#include "concurrent/aeron_spsc_rb.h"
 
 typedef struct aeron_driver_native_resource_agent_stct aeron_driver_native_resource_agent_t;
 
@@ -25,8 +26,8 @@ typedef struct aeron_driver_native_resource_agent_proxy_stct
 {
     aeron_driver_native_resource_agent_t *native_resource_agent;
     int64_t *fail_counter;
-    aeron_mpsc_rb_t *command_queue;
-    aeron_mpsc_rb_t *result_queue;
+    aeron_spsc_rb_t *command_queue;
+    aeron_spsc_rb_t *result_queue;
 }
 aeron_driver_native_resource_agent_proxy_t;
 

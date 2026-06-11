@@ -3184,13 +3184,13 @@ static bool aeron_driver_conductor_not_accepting_client_commands(aeron_driver_co
         return true;
     }
 
-    aeron_mpsc_rb_t *sender_rb = conductor->context->sender_proxy->command_queue;
-    aeron_mpsc_rb_t *receiver_rb = conductor->context->receiver_proxy->command_queue;
-    aeron_mpsc_rb_t *native_resource_agent_rb = conductor->context->native_resource_agent_proxy->command_queue;
+    aeron_spsc_rb_t *sender_rb = conductor->context->sender_proxy->command_queue;
+    aeron_spsc_rb_t *receiver_rb = conductor->context->receiver_proxy->command_queue;
+    aeron_spsc_rb_t *native_resource_agent_rb = conductor->context->native_resource_agent_proxy->command_queue;
     return
-        (sender_rb->capacity - aeron_mpsc_rb_size(sender_rb) <= AERON_COMMAND_RB_RESERVE) ||
-        (receiver_rb->capacity - aeron_mpsc_rb_size(receiver_rb) <= AERON_COMMAND_RB_RESERVE) ||
-        (native_resource_agent_rb->capacity - aeron_mpsc_rb_size(native_resource_agent_rb) <= AERON_COMMAND_RB_RESERVE);
+        (sender_rb->capacity - aeron_spsc_rb_size(sender_rb) <= AERON_COMMAND_RB_RESERVE) ||
+        (receiver_rb->capacity - aeron_spsc_rb_size(receiver_rb) <= AERON_COMMAND_RB_RESERVE) ||
+        (native_resource_agent_rb->capacity - aeron_spsc_rb_size(native_resource_agent_rb) <= AERON_COMMAND_RB_RESERVE);
 }
 
 typedef struct aeron_driver_async_command_stct
@@ -3907,7 +3907,7 @@ int aeron_driver_conductor_do_work(void *clientd)
     }
 
     work_count += aeron_driver_conductor_free_end_of_life_resources(conductor);
-    work_count += (int)aeron_mpsc_rb_read(
+    work_count += (int)aeron_spsc_rb_read(
         &conductor->context->native_resource_agent_result_queue,
         aeron_driver_conductor_on_task_result,
         conductor,

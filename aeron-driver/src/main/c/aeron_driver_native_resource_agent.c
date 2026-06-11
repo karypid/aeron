@@ -82,7 +82,7 @@ int aeron_driver_native_resource_agent_do_work(void *clientd)
     const int64_t now = native_resource_agent->context->epoch_clock();
     work_count += native_resource_agent->name_resolver->do_work_func(native_resource_agent->name_resolver, now);
 
-    work_count += (int)aeron_mpsc_rb_read(
+    work_count += (int)aeron_spsc_rb_read(
         native_resource_agent->native_resource_agent_proxy.command_queue,
         aeron_driver_native_resource_agent_execute_task,
         native_resource_agent,
@@ -117,7 +117,7 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
     aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
 
     // free all scheduled but not executed commands
-    while (0 != aeron_mpsc_rb_read(
+    while (0 != aeron_spsc_rb_read(
         native_resource_agent->native_resource_agent_proxy.command_queue,
         aeron_driver_native_resource_agent_cancel_task,
         native_resource_agent,

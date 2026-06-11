@@ -23,8 +23,8 @@
 #include "aeronmd.h"
 #include "util/aeron_fileutil.h"
 #include "concurrent/aeron_spsc_concurrent_array_queue.h"
-#include "concurrent/aeron_mpsc_concurrent_array_queue.h"
 #include "concurrent/aeron_mpsc_rb.h"
+#include "concurrent/aeron_spsc_rb.h"
 #include "concurrent/aeron_broadcast_descriptor.h"
 #include "aeron_flow_control.h"
 #include "aeron_congestion_control.h"
@@ -252,11 +252,11 @@ typedef struct aeron_driver_context_stct
     aeron_clock_cache_t *sender_cached_clock;
     aeron_clock_cache_t *receiver_cached_clock;
 
-    aeron_mpsc_rb_t sender_command_queue;
-    aeron_mpsc_rb_t receiver_command_queue;
     aeron_mpsc_rb_t conductor_command_queue;
-    aeron_mpsc_rb_t native_resource_agent_command_queue;
-    aeron_mpsc_rb_t native_resource_agent_result_queue;
+    aeron_spsc_rb_t sender_command_queue;
+    aeron_spsc_rb_t receiver_command_queue;
+    aeron_spsc_rb_t native_resource_agent_command_queue;
+    aeron_spsc_rb_t native_resource_agent_result_queue;
 
     aeron_agent_on_start_func_t agent_on_start_func;
     void *agent_on_start_state;

@@ -131,7 +131,7 @@ int aeron_driver_receiver_do_work(void *clientd)
     aeron_duty_cycle_tracker_t *tracker = receiver->context->receiver_duty_cycle_tracker;
     tracker->measure_and_update(tracker->state, now_ns);
 
-    int work_count = (int)aeron_mpsc_rb_read(
+    int work_count = (int)aeron_spsc_rb_read(
         receiver->receiver_proxy.command_queue,
         aeron_driver_receiver_on_rb_command_queue,
         receiver,
