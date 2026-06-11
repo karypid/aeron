@@ -26,7 +26,6 @@ typedef struct aeron_network_publication_stct aeron_network_publication_t;
 typedef struct aeron_driver_sender_proxy_stct
 {
     aeron_driver_sender_t *sender;
-    aeron_threading_mode_t threading_mode;
     struct
     {
         aeron_on_endpoint_change_func_t on_add_endpoint;

@@ -43,14 +43,7 @@ void aeron_driver_sender_proxy_on_add_endpoint(
             .item = endpoint
         };
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_add_endpoint(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_remove_endpoint(
@@ -63,14 +56,7 @@ void aeron_driver_sender_proxy_on_remove_endpoint(
             .item = endpoint
         };
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_remove_endpoint(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_add_publication(
@@ -82,14 +68,7 @@ void aeron_driver_sender_proxy_on_add_publication(
             .item = publication
         };
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_add_publication(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_remove_publication(
@@ -101,14 +80,7 @@ void aeron_driver_sender_proxy_on_remove_publication(
             .item = publication
         };
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_remove_publication(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_add_destination(
@@ -127,14 +99,7 @@ void aeron_driver_sender_proxy_on_add_destination(
         };
     memcpy(&cmd.control_address, addr, sizeof(cmd.control_address));
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_add_destination(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_remove_destination(
@@ -147,14 +112,7 @@ void aeron_driver_sender_proxy_on_remove_destination(
         };
     memcpy(&cmd.control_address, addr, sizeof(cmd.control_address));
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_remove_destination(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_remove_destination_by_id(
@@ -169,14 +127,7 @@ void aeron_driver_sender_proxy_on_remove_destination_by_id(
             .destination_registration_id = destination_registration_id
         };
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_remove_destination_by_id(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }
 
 void aeron_driver_sender_proxy_on_resolution_change(
@@ -193,12 +144,5 @@ void aeron_driver_sender_proxy_on_resolution_change(
         };
     memcpy(&cmd.new_addr, new_addr, sizeof(cmd.new_addr));
 
-    if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(sender_proxy->threading_mode))
-    {
-        aeron_driver_sender_on_resolution_change(sender_proxy->sender, &cmd);
-    }
-    else
-    {
-        aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
-    }
+    aeron_driver_sender_proxy_offer(sender_proxy, &cmd, sizeof(cmd));
 }

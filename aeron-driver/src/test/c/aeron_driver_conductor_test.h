@@ -286,6 +286,9 @@ struct TestDriverConductor
         context.m_context->native_resource_agent_proxy = &m_native_resource_agent.native_resource_agent_proxy;
 
         m_destination.has_control_addr = false;
+        m_destination.transport.fd = -1;
+        m_destination.data_paths = &m_receiver.receiver_proxy.receiver->data_paths;
+        m_destination.transport.data_paths = m_destination.data_paths;
     }
 
     virtual ~TestDriverConductor()
@@ -598,6 +601,8 @@ public:
         int work_count = 0;
         work_count += aeron_driver_conductor_do_work(&m_conductor.m_conductor);
         work_count += aeron_driver_native_resource_agent_do_work(&m_conductor.m_native_resource_agent);
+        work_count += aeron_driver_sender_do_work(&m_conductor.m_sender);
+        work_count += aeron_driver_receiver_do_work(&m_conductor.m_receiver);
         return work_count;
     }
 

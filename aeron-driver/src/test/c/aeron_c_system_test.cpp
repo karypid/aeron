@@ -426,7 +426,31 @@ TEST_P(CSystemTest, shouldCancelAddingSubscriptionAndRemoveByRegistrationId)
 
     aeron_async_add_subscription_t *async = nullptr;
     ASSERT_EQ(aeron_async_add_subscription(&async, m_aeron, channel, STREAM_ID, nullptr, nullptr, nullptr, nullptr), 0);
+
+    int64_t subRegistrationId = aeron_async_add_subscription_get_registration_id(async);
+    int32_t receiveChannelCounterId = AERON_NULL_COUNTER_ID;
+    const auto countersReader = aeron_counters_reader(m_aeron);
+    aeron_uri_t uri;
+    ASSERT_EQ(0, aeron_uri_parse(strlen(channel), channel, &uri));
+    while (AERON_URI_UDP == uri.type &&
+        AERON_NULL_COUNTER_ID == (receiveChannelCounterId = aeron_counters_reader_find_by_type_id_and_registration_id(
+        countersReader, AERON_COUNTER_RECEIVE_CHANNEL_STATUS_TYPE_ID, subRegistrationId)))
+    {
+        std::this_thread::yield();
+    }
+
     ASSERT_EQ(aeron_async_add_subscription_cancel(m_aeron, async), 0);
+
+    while (AERON_NULL_COUNTER_ID != receiveChannelCounterId)
+    {
+        int32_t counter_state;
+        ASSERT_EQ(0, aeron_counters_reader_counter_state(countersReader, receiveChannelCounterId, &counter_state));
+        if (AERON_COUNTER_RECORD_ALLOCATED != counter_state)
+        {
+            break;
+        }
+        std::this_thread::yield();
+    }
 
     ASSERT_EQ(aeron_async_add_subscription(&async, m_aeron, channel, STREAM_ID, nullptr, nullptr, nullptr, nullptr), 0);
     aeron_subscription_t *subscription = awaitSubscriptionOrError(async);
@@ -1207,7 +1231,6 @@ TEST_P(CSystemTest, shouldAllowImageToGoUnavailableAndThenRejoin)
     aeron_subscription_t *subscription = awaitSubscriptionOrError(async_sub);
     ASSERT_TRUE(subscription) << aeron_errmsg();
 
-    
     auto createPublicationAndOffer = [&](){
         ASSERT_EQ(aeron_async_add_publication(&async_pub, m_aeron, pubUri.c_str(), STREAM_ID), 0);
         aeron_publication_t *publication = awaitPublicationOrError(async_pub);
@@ -1245,12 +1268,6 @@ TEST_P(CSystemTest, shouldAllowImageToGoUnavailableAndThenRejoin)
         {
             std::this_thread::yield();
         }
-
-        poll_handler_t handler = [&](const uint8_t *buffer, size_t length, aeron_header_t *header)
-        {
-        };
-
-        poll(subscription, handler, 1);
     };
 
     createPublicationAndOffer();

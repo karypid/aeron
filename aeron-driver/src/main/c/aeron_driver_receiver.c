@@ -90,7 +90,6 @@ int aeron_driver_receiver_init(
     receiver->receiver_proxy.command_queue = &context->receiver_command_queue;
     receiver->receiver_proxy.fail_counter = aeron_system_counter_addr(
         system_counters, AERON_SYSTEM_COUNTER_RECEIVER_PROXY_FAILS);
-    receiver->receiver_proxy.threading_mode = context->threading_mode;
     receiver->receiver_proxy.receiver = receiver;
     receiver->receiver_proxy.log.on_add_endpoint = context->log.receiver_proxy_on_add_endpoint;
     receiver->receiver_proxy.log.on_remove_endpoint = context->log.receiver_proxy_on_remove_endpoint;

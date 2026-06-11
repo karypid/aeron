@@ -272,7 +272,7 @@ TEST_F(NetworkPublicationTest, shouldSendHeartbeatWhileSendingPeriodicSetups)
     aeron_driver_conductor_t conductor = {};
     aeron_driver_conductor_proxy_t proxy = {};
     proxy.conductor = &conductor;
-    proxy.threading_mode = AERON_THREADING_MODE_INVOKER;
+    proxy.command_queue = &m_context->conductor_command_queue;
 
     aeron_network_publication_t *publication = createPublication("aeron:udp?endpoint=localhost:23245");
     ASSERT_NE(nullptr, publication) << aeron_errmsg();
@@ -372,7 +372,7 @@ TEST_F(NetworkPublicationTest, shouldCleanDirtyTermBuffersOneTermBehindTheMinCon
     aeron_driver_conductor_t conductor = {};
     aeron_driver_conductor_proxy_t proxy = {};
     proxy.conductor = &conductor;
-    proxy.threading_mode = AERON_THREADING_MODE_INVOKER;
+    proxy.command_queue = &m_context->conductor_command_queue;
     AERON_DECL_ALIGNED(buffer_t data_buffer, 16) = {};
     sockaddr_storage sockaddr = {};
     aeron_network_publication_on_status_message(
@@ -446,7 +446,7 @@ TEST_F(NetworkPublicationTest, publicationLimitShouldNotCrossIntoPreviousTermIfT
     aeron_driver_conductor_t conductor = {};
     aeron_driver_conductor_proxy_t proxy = {};
     proxy.conductor = &conductor;
-    proxy.threading_mode = AERON_THREADING_MODE_INVOKER;
+    proxy.command_queue = &m_context->conductor_command_queue;
     AERON_DECL_ALIGNED(buffer_t data_buffer, 16) = {};
     sockaddr_storage sockaddr = {};
     aeron_network_publication_on_status_message(
@@ -491,7 +491,7 @@ TEST_F(NetworkPublicationTest, publicationLimitShouldNotCrossIntoTheDirtyTerm)
     aeron_driver_conductor_t conductor = {};
     aeron_driver_conductor_proxy_t proxy = {};
     proxy.conductor = &conductor;
-    proxy.threading_mode = AERON_THREADING_MODE_INVOKER;
+    proxy.command_queue = &m_context->conductor_command_queue;
     AERON_DECL_ALIGNED(buffer_t data_buffer, 16) = {};
     sockaddr_storage sockaddr = {};
     aeron_network_publication_on_status_message(
@@ -528,7 +528,6 @@ protected:
     {
         NetworkPublicationTest::SetUp();
         ASSERT_EQ(0, aeron_mpsc_rb_init(&m_cmd_queue, m_cmd_queue_buffer.data(), m_cmd_queue_buffer.size()));
-        m_conductor_proxy.threading_mode = AERON_THREADING_MODE_DEDICATED;
         m_conductor_proxy.command_queue = &m_cmd_queue;
         m_conductor_proxy.fail_counter = &m_fail_counter;
     }

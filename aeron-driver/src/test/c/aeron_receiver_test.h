@@ -76,7 +76,6 @@ protected:
         aeron_mpsc_rb_init(&m_conductor_command_queue, command_buffer, command_buffer_capacity);
 
         m_conductor_proxy.command_queue = &m_conductor_command_queue;
-        m_conductor_proxy.threading_mode = AERON_THREADING_MODE_DEDICATED;
         m_conductor_proxy.fail_counter = &m_conductor_fail_counter;
         m_conductor_proxy.conductor = nullptr;
 
