@@ -395,7 +395,7 @@ TEST_F(DriverConductorNetworkTest, shouldSendAvailableImageForSecondSubscription
     EXPECT_NE(image, (aeron_publication_image_t *)nullptr);
 
     ASSERT_EQ(addNetworkSubscription(client_id, sub_id_2, CHANNEL_1, STREAM_ID_1), 0);
-    doWork();
+    doWorkUntilDone();
 
     int64_t image_registration_id = aeron_publication_image_registration_id(image);
     const char *log_file_name = aeron_publication_image_log_file_name(image);
@@ -565,7 +565,7 @@ TEST_F(DriverConductorNetworkTest, shouldErrorWithUnknownSessionIdTag)
     int64_t pub_id_1 = nextCorrelationId();
 
     ASSERT_EQ(addPublication(client_id, pub_id_1, CHANNEL_2 "|session-id=tag:1002", STREAM_ID_1, false), 0);
-    doWork();
+    doWorkUntilDone();
 
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(AERON_RESPONSE_ON_ERROR, _, _));
     readAllBroadcastsFromConductor(mock_broadcast_handler);
@@ -607,7 +607,7 @@ TEST_F(DriverConductorNetworkTest, shouldBeAbleToAddAndRemoveDestinationToManual
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 
     ASSERT_EQ(removeDestination(client_id, remove_destination_id, pub_id, CHANNEL_1), 0);
-    doWork();
+    doWorkUntilDone();
 
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(AERON_RESPONSE_ON_OPERATION_SUCCESS, _, _))
         .With(IsOperationSuccess(remove_destination_id));

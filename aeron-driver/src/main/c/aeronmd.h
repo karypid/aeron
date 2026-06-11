@@ -484,18 +484,18 @@ const char *aeron_driver_context_get_shared_idle_strategy_init_args(aeron_driver
 /**
  * Idle strategy to be employed by AsyncExecutor when enabled.
  */
-#define AERON_ASYNC_EXECUTOR_IDLE_STRATEGY_ENV_VAR "AERON_DRIVER_ASYNC_EXECUTOR_IDLE_STRATEGY"
+#define AERON_DRIVER_NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_ENV_VAR "AERON_DRIVER_NATIVE_RESOURCE_AGENT_IDLE_STRATEGY"
 
-int aeron_driver_context_set_async_executor_idle_strategy(aeron_driver_context_t *context, const char *value);
-const char *aeron_driver_context_get_async_executor_idle_strategy(aeron_driver_context_t *context);
+int aeron_driver_context_set_native_resource_agent_idle_strategy(aeron_driver_context_t *context, const char *value);
+const char *aeron_driver_context_get_native_resource_agent_idle_strategy(aeron_driver_context_t *context);
 
 /**
  * Idle strategy init args to be employed AsyncExecutor when enabled.
  */
-#define AERON_ASYNC_EXECUTOR_IDLE_STRATEGY_INIT_ARGS_ENV_VAR "AERON_DRIVER_ASYNC_EXECUTOR_IDLE_STRATEGY_INIT_ARGS"
+#define AERON_DRIVER_NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_INIT_ARGS_ENV_VAR "AERON_DRIVER_NATIVE_RESOURCE_AGENT_IDLE_STRATEGY_INIT_ARGS"
 
-int aeron_driver_context_set_async_executor_idle_strategy_init_args(aeron_driver_context_t *context, const char *value);
-const char *aeron_driver_context_get_async_executor_idle_strategy_init_args(aeron_driver_context_t *context);
+int aeron_driver_context_set_native_resource_agent_idle_strategy_init_args(aeron_driver_context_t *context, const char *value);
+const char *aeron_driver_context_get_native_resource_agent_idle_strategy_init_args(aeron_driver_context_t *context);
 
 /**
  * Function name to call on start of each agent.
@@ -940,10 +940,6 @@ uint32_t aeron_driver_context_get_network_publication_max_messages_per_send(aero
 int aeron_driver_context_set_resource_free_limit(aeron_driver_context_t *context, uint32_t value);
 uint32_t aeron_driver_context_get_resource_free_limit(aeron_driver_context_t *context);
 
-#define AERON_DRIVER_ASYNC_EXECUTOR_ENABLED_ENV_VAR "AERON_DRIVER_ASYNC_EXECUTOR_ENABLED"
-int aeron_driver_context_set_async_executor_enabled(aeron_driver_context_t *context, bool value);
-bool aeron_driver_context_get_async_executor_enabled(aeron_driver_context_t *context);
-
 #define AERON_CONDUCTOR_CPU_AFFINITY_ENV_VAR "AERON_CONDUCTOR_CPU_AFFINITY"
 int aeron_driver_context_set_conductor_cpu_affinity(aeron_driver_context_t *context, int32_t value);
 int32_t aeron_driver_context_get_conductor_cpu_affinity(aeron_driver_context_t *context);
@@ -956,9 +952,9 @@ int32_t aeron_driver_context_get_receiver_cpu_affinity(aeron_driver_context_t *c
 int aeron_driver_context_set_sender_cpu_affinity(aeron_driver_context_t *context, int32_t value);
 int32_t aeron_driver_context_get_sender_cpu_affinity(aeron_driver_context_t *context);
 
-#define AERON_ASYNC_CPU_AFFINITY_ENV_VAR "AERON_ASYNC_CPU_AFFINITY"
-int aeron_driver_context_set_async_cpu_affinity(aeron_driver_context_t *context, int32_t value);
-int32_t aeron_driver_context_get_async_cpu_affinity(aeron_driver_context_t *context);
+#define AERON_DRIVER_NATIVE_RESOURCE_AGENT_CPU_AFFINITY_ENV_VAR "AERON_DRIVER_NATIVE_RESOURCE_AGENT_CPU_AFFINITY"
+int aeron_driver_context_set_native_resource_agent_cpu_affinity(aeron_driver_context_t *context, int32_t value);
+int32_t aeron_driver_context_get_native_resource_agent_cpu_affinity(aeron_driver_context_t *context);
 
 #define AERON_DRIVER_CPUSET_AFFINITY_ENV_VAR "AERON_DRIVER_CPUSET_AFFINITY"
 int aeron_driver_context_set_cpuset_affinity(aeron_driver_context_t *context, bool value);
@@ -1183,8 +1179,8 @@ int aeron_default_path(char *path, size_t path_length);
 /**
  * Affinity setting function that complies with the aeron_agent_on_start_func_t structure that can
  * be used as an agent start function.  The state should be the aeron_driver_context_t* and the function
- * will match the values "conductor", "sender", "receiver" and use the respective configuration options from
- * the aeron_driver_context_t.
+ * will match the values conductor/sender/receiver/native resource agent thread names and use the respective
+ * configuration options from the aeron_driver_context_t.
  *
  * @param state client information passed to function, should be the aeron_driver_context_t*.
  * @param role_name name of the role specified on the agent.

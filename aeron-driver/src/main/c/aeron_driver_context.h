@@ -34,6 +34,13 @@
 #include "aeron_duty_cycle_tracker.h"
 #include "aeron_port_manager.h"
 
+#define AERON_DRIVER_AGENT_ROLE_NAME_NATIVE_RESOURCE_AGENT "aeron-md-nra"
+#define AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR "conductor"
+#define AERON_DRIVER_AGENT_ROLE_NAME_RECEIVER "receiver"
+#define AERON_DRIVER_AGENT_ROLE_NAME_SENDER "sender"
+#define AERON_DRIVER_AGENT_ROLE_NAME_SHARED_NETWORK "[sender, receiver]"
+#define AERON_DRIVER_AGENT_ROLE_NAME_SHARED "[conductor, sender, receiver]"
+
 #define AERON_COMMAND_RB_CAPACITY (128 * 1024)
 #define AERON_COMMAND_RB_RESERVE (1024)
 #define AERON_COMMAND_DRAIN_LIMIT (1)
@@ -55,6 +62,7 @@
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
 typedef struct aeron_driver_conductor_proxy_stct aeron_driver_conductor_proxy_t;
+typedef struct aeron_driver_native_resource_agent_proxy_stct aeron_driver_native_resource_agent_proxy_t;
 typedef struct aeron_driver_sender_proxy_stct aeron_driver_sender_proxy_t;
 typedef struct aeron_driver_receiver_proxy_stct aeron_driver_receiver_proxy_t;
 typedef struct aeron_dl_loaded_libs_state_stct aeron_dl_loaded_libs_state_t;
@@ -161,7 +169,6 @@ typedef struct aeron_driver_context_stct
     bool rejoin_stream;                                     /* aeron.rejoin.stream = true */
     bool ats_enabled;
     bool connect_enabled;                                   /* aeron.driver.connect = true */
-    bool async_executor_enabled;                            /* aeron.driver.async.executor.enabled = true */
     uint64_t driver_timeout_ms;                             /* aeron.driver.timeout = 10s */
     uint64_t client_liveness_timeout_ns;                    /* aeron.client.liveness.timeout = 10s */
     uint64_t publication_linger_timeout_ns;                 /* aeron.publication.linger.timeout = 5s */
@@ -212,7 +219,7 @@ typedef struct aeron_driver_context_stct
     int32_t conductor_cpu_affinity_no;                      /* aeron.conductor.cpu.affinity = -1 */
     int32_t receiver_cpu_affinity_no;                       /* aeron.receiver.cpu.affinity = -1 */
     int32_t sender_cpu_affinity_no;                         /* aeron.sender.cpu.affinity = -1 */
-    int32_t async_cpu_affinity_no;                          /* aeron.async.cpu.affinity = -1 */
+    int32_t native_resource_agent_cpu_affinity_no;          /* aeron.driver.native.resource.agent.cpu.affinity = -1 */
     int32_t stream_session_limit;                           /* aeron.driver.stream.session.limit = INT32_MAX */
     bool cpuset_affinity;                                   /* aeron.driver.cpuset.affinity = false */
     bool cpuset_warnings_as_errors;                         /* aeron.driver.cpuset.warnings_as_errors = false */
@@ -250,6 +257,8 @@ typedef struct aeron_driver_context_stct
     aeron_mpsc_rb_t sender_command_queue;
     aeron_mpsc_rb_t receiver_command_queue;
     aeron_mpsc_rb_t conductor_command_queue;
+    aeron_mpsc_rb_t native_resource_agent_command_queue;
+    aeron_mpsc_rb_t native_resource_agent_result_queue;
 
     aeron_agent_on_start_func_t agent_on_start_func;
     void *agent_on_start_state;
@@ -281,10 +290,10 @@ typedef struct aeron_driver_context_stct
     char *receiver_idle_strategy_init_args;
     const char *receiver_idle_strategy_name;
 
-    aeron_idle_strategy_func_t async_executor_idle_strategy_func;
-    void *async_executor_idle_strategy_state;
-    char *async_executor_idle_strategy_init_args;
-    const char *async_executor_idle_strategy_name;
+    aeron_idle_strategy_func_t native_resource_agent_idle_strategy_func;
+    void *native_resource_agent_idle_strategy_state;
+    char *native_resource_agent_idle_strategy_init_args;
+    const char *native_resource_agent_idle_strategy_name;
 
     aeron_usable_fs_space_func_t usable_fs_space_func;
     aeron_raw_log_map_func_t raw_log_map_func;
@@ -297,6 +306,7 @@ typedef struct aeron_driver_context_stct
     aeron_congestion_control_strategy_supplier_func_t congestion_control_supplier_func;
 
     aeron_driver_conductor_proxy_t *conductor_proxy;
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy;
     aeron_driver_sender_proxy_t *sender_proxy;
     aeron_driver_receiver_proxy_t *receiver_proxy;
 

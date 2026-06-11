@@ -580,7 +580,7 @@ void aeron_driver_context_print_configuration(aeron_driver_context_t *context)
     AERON_FPRINTF(fpout, "\n    conductor_cpu_affinity_no=%" PRId32, context->conductor_cpu_affinity_no);
     AERON_FPRINTF(fpout, "\n    receiver_cpu_affinity_no=%" PRId32, context->receiver_cpu_affinity_no);
     AERON_FPRINTF(fpout, "\n    sender_cpu_affinity_no=%" PRId32, context->sender_cpu_affinity_no);
-    AERON_FPRINTF(fpout, "\n    async_cpu_affinity_no=%" PRId32, context->async_cpu_affinity_no);
+    AERON_FPRINTF(fpout, "\n    native_resource_agent_cpu_affinity_no=%" PRId32, context->native_resource_agent_cpu_affinity_no);
     AERON_FPRINTF(fpout, "\n    cpuset_affinity=%" PRId32, context->cpuset_affinity);
     AERON_FPRINTF(fpout, "\n    cpuset_warnings_as_errors=%" PRId32, context->cpuset_warnings_as_errors);
 
@@ -591,7 +591,6 @@ void aeron_driver_context_print_configuration(aeron_driver_context_t *context)
     /* cachedEpochClock */
     /* cachedNanoClock */
     AERON_FPRINTF(fpout, "\n    threading_mode=%s", aeron_driver_threading_mode_to_string(context->threading_mode));
-    AERON_FPRINTF(fpout, "\n    async_executor_enabled=%d", context->async_executor_enabled);
     AERON_FPRINTF(fpout, "\n    agent_on_start_func=%s",
         aeron_dlinfo_func((aeron_fptr_t)context->agent_on_start_func, buffer, sizeof(buffer)));
     AERON_FPRINTF(fpout, "\n    agent_on_start_state=%p", context->agent_on_start_state);
@@ -620,11 +619,11 @@ void aeron_driver_context_print_configuration(aeron_driver_context_t *context)
     AERON_FPRINTF(fpout, "\n    shared_idle_strategy_init_args=%p%s",
         (void *)context->shared_idle_strategy_init_args,
         context->shared_idle_strategy_init_args ? context->shared_idle_strategy_init_args : "");
-    AERON_FPRINTF(fpout, "\n    async_executor_idle_strategy_func=%s",
-    aeron_dlinfo_func((aeron_fptr_t)context->async_executor_idle_strategy_func, buffer, sizeof(buffer)));
-    AERON_FPRINTF(fpout, "\n    async_executor_idle_strategy_init_args=%p%s",
-        (void *)context->async_executor_idle_strategy_init_args,
-        context->async_executor_idle_strategy_init_args ? context->async_executor_idle_strategy_init_args : "");
+    AERON_FPRINTF(fpout, "\n    native_resource_agent_idle_strategy_func=%s",
+    aeron_dlinfo_func((aeron_fptr_t)context->native_resource_agent_idle_strategy_func, buffer, sizeof(buffer)));
+    AERON_FPRINTF(fpout, "\n    native_resource_agent_idle_strategy_init_args=%p%s",
+        (void *)context->native_resource_agent_idle_strategy_init_args,
+        context->native_resource_agent_idle_strategy_init_args ? context->native_resource_agent_idle_strategy_init_args : "");
     AERON_FPRINTF(fpout, "\n    unicast_flow_control_supplier_func=%s",
         aeron_dlinfo_func((aeron_fptr_t)context->unicast_flow_control_supplier_func, buffer, sizeof(buffer)));
     AERON_FPRINTF(fpout, "\n    multicast_flow_control_supplier_func=%s",
@@ -715,16 +714,27 @@ void aeron_driver_context_print_configuration(aeron_driver_context_t *context)
     fflush(fpout);
 }
 
+void aeron_driver_shared_on_start(void *state, const char *role_name)
+{
+    aeron_driver_t *driver = (aeron_driver_t *)state;
+    if (NULL != driver->context->agent_on_start_func)
+    {
+        driver->context->agent_on_start_func(driver->context->agent_on_start_state, role_name);
+    }
+    aeron_driver_native_resource_agent_on_start(&driver->native_resource_agent, role_name);
+}
+
 int aeron_driver_shared_do_work(void *clientd)
 {
     aeron_driver_t *driver = (aeron_driver_t *)clientd;
-    int sum = 0;
+    int work_count = 0;
 
-    sum += aeron_driver_conductor_do_work(&driver->conductor);
-    sum += aeron_driver_sender_do_work(&driver->sender);
-    sum += aeron_driver_receiver_do_work(&driver->receiver);
+    work_count += aeron_driver_conductor_do_work(&driver->conductor);
+    work_count += aeron_driver_native_resource_agent_do_work(&driver->native_resource_agent);
+    work_count += aeron_driver_sender_do_work(&driver->sender);
+    work_count += aeron_driver_receiver_do_work(&driver->receiver);
 
-    return sum;
+    return work_count;
 }
 
 void aeron_driver_shared_on_close(void *clientd)
@@ -732,6 +742,7 @@ void aeron_driver_shared_on_close(void *clientd)
     aeron_driver_t *driver = (aeron_driver_t *)clientd;
 
     aeron_driver_conductor_on_close(&driver->conductor);
+    aeron_driver_native_resource_agent_on_close(&driver->native_resource_agent);
     aeron_driver_sender_on_close(&driver->sender);
     aeron_driver_receiver_on_close(&driver->receiver);
 }
@@ -903,6 +914,13 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         goto error;
     }
 
+    if (aeron_driver_native_resource_agent_init(
+        &_driver->native_resource_agent, &_driver->conductor.name_resolver, context, &_driver->conductor) < 0)
+    {
+        goto error;
+    }
+    _driver->context->native_resource_agent_proxy = &_driver->native_resource_agent.native_resource_agent_proxy;
+
     if (aeron_driver_sender_init(
         &_driver->sender, context, &_driver->conductor.system_counters, &_driver->conductor.error_log) < 0)
     {
@@ -970,10 +988,10 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         case AERON_THREADING_MODE_SHARED:
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_SHARED],
-                "[conductor, sender, receiver]",
+                AERON_DRIVER_AGENT_ROLE_NAME_SHARED,
                 _driver,
-                _driver->context->agent_on_start_func,
-                _driver->context->agent_on_start_state,
+                aeron_driver_shared_on_start,
+                _driver,
                 aeron_driver_shared_do_work,
                 aeron_driver_shared_on_close,
                 _driver->context->shared_idle_strategy_func,
@@ -986,7 +1004,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         case AERON_THREADING_MODE_SHARED_NETWORK:
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
-                "conductor",
+                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
                 &_driver->conductor,
                 _driver->context->agent_on_start_func,
                 _driver->context->agent_on_start_state,
@@ -999,8 +1017,22 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
             }
 
             if (aeron_agent_init(
+                &_driver->runners[AERON_AGENT_RUNNER_NATIVE_RESOURCE_AGENT],
+                AERON_DRIVER_AGENT_ROLE_NAME_NATIVE_RESOURCE_AGENT,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_on_start,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_do_work,
+                aeron_driver_native_resource_agent_on_close,
+                _driver->context->native_resource_agent_idle_strategy_func,
+                _driver->context->native_resource_agent_idle_strategy_state) < 0)
+            {
+                goto error;
+            }
+
+            if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_SHARED_NETWORK],
-                "[sender, receiver]",
+                AERON_DRIVER_AGENT_ROLE_NAME_SHARED_NETWORK,
                 _driver,
                 _driver->context->agent_on_start_func,
                 _driver->context->agent_on_start_state,
@@ -1017,7 +1049,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         default:
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
-                "conductor",
+                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
                 &_driver->conductor,
                 _driver->context->agent_on_start_func,
                 _driver->context->agent_on_start_state,
@@ -1030,8 +1062,22 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
             }
 
             if (aeron_agent_init(
+                &_driver->runners[AERON_AGENT_RUNNER_NATIVE_RESOURCE_AGENT],
+                AERON_DRIVER_AGENT_ROLE_NAME_NATIVE_RESOURCE_AGENT,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_on_start,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_do_work,
+                aeron_driver_native_resource_agent_on_close,
+                _driver->context->native_resource_agent_idle_strategy_func,
+                _driver->context->native_resource_agent_idle_strategy_state) < 0)
+            {
+                goto error;
+            }
+
+            if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_SENDER],
-                "sender",
+                AERON_DRIVER_AGENT_ROLE_NAME_SENDER,
                 &_driver->sender,
                 _driver->context->agent_on_start_func,
                 _driver->context->agent_on_start_state,
@@ -1045,7 +1091,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
 
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_RECEIVER],
-                "receiver",
+                AERON_DRIVER_AGENT_ROLE_NAME_RECEIVER,
                 &_driver->receiver,
                 _driver->context->agent_on_start_func,
                 _driver->context->agent_on_start_state,

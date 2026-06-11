@@ -33,12 +33,12 @@
 #include "util/aeron_arrayutil.h"
 #include "aeron_driver_conductor.h"
 #include "aeron_position.h"
-#include "aeron_driver_sender.h"
-#include "aeron_driver_receiver.h"
+#include "aeron_driver_sender_proxy.h"
+#include "aeron_driver_receiver_proxy.h"
+#include "aeron_driver_native_resource_agent_proxy.h"
 #include "collections/aeron_bit_set.h"
 #include "uri/aeron_uri.h"
 #include "util/aeron_parse_util.h"
-
 
 #define STATIC_BIT_SET_U64_LEN (512u)
 
@@ -66,9 +66,6 @@ const char * const AERON_DRIVER_CONDUCTOR_INVALID_DESTINATION_KEYS[] =
     AERON_URI_RESPONSE_CORRELATION_ID_KEY,
     NULL
 };
-
-const char *AERON_ASYNC_EXECUTOR_AGENT_ROLE_NAME = "aeron-executor";
-
 
 static bool aeron_driver_conductor_network_subscription_link_matches(
     const aeron_subscription_link_t *link,
@@ -1025,16 +1022,6 @@ int aeron_driver_conductor_init(aeron_driver_conductor_t *conductor, aeron_drive
     conductor->name_resolver.close_func = aeron_time_tracking_name_resolver_close;
     conductor->name_resolver.state = time_tracking_name_resolver;
 
-    if (aeron_async_executor_init(
-        &conductor->executor,
-        context,
-        &conductor->name_resolver,
-        AERON_ASYNC_EXECUTOR_AGENT_ROLE_NAME,
-        conductor) < 0)
-    {
-        goto error;
-    }
-
     char label[AERON_COUNTER_MAX_LABEL_LENGTH];
     const char *driver_name = NULL == context->resolver_name ? "" : context->resolver_name;
 
@@ -1148,7 +1135,6 @@ int aeron_driver_conductor_init(aeron_driver_conductor_t *conductor, aeron_drive
 
 error:
     aeron_deque_close(&conductor->end_of_life_queue);
-    aeron_async_executor_close(&conductor->executor);
     aeron_str_to_ptr_hash_map_delete(&conductor->receive_channel_endpoint_by_channel_map);
     aeron_str_to_ptr_hash_map_delete(&conductor->send_channel_endpoint_by_channel_map);
     aeron_distinct_error_log_close(&conductor->error_log);
@@ -3199,9 +3185,11 @@ static bool aeron_driver_conductor_not_accepting_client_commands(aeron_driver_co
 
     aeron_mpsc_rb_t *sender_rb = conductor->context->sender_proxy->command_queue;
     aeron_mpsc_rb_t *receiver_rb = conductor->context->receiver_proxy->command_queue;
+    aeron_mpsc_rb_t *native_resource_agent_rb = conductor->context->native_resource_agent_proxy->command_queue;
     return
-        ((sender_rb->capacity - aeron_mpsc_rb_size(sender_rb)) <= AERON_COMMAND_RB_RESERVE) ||
-        ((receiver_rb->capacity - aeron_mpsc_rb_size(receiver_rb)) <= AERON_COMMAND_RB_RESERVE);
+        (sender_rb->capacity - aeron_mpsc_rb_size(sender_rb) <= AERON_COMMAND_RB_RESERVE) ||
+        (receiver_rb->capacity - aeron_mpsc_rb_size(receiver_rb) <= AERON_COMMAND_RB_RESERVE) ||
+        (native_resource_agent_rb->capacity - aeron_mpsc_rb_size(native_resource_agent_rb) <= AERON_COMMAND_RB_RESERVE);
 }
 
 typedef struct aeron_driver_async_command_stct
@@ -3254,7 +3242,7 @@ int aeron_driver_async_client_command_execute(void *task_clientd, void *executor
     return 0;
 }
 
-/* This is an aeron_async_executor 'complete' callback - it's called when 'aeron_async_executor_process_completions' is called */
+/* This is an aeron_driver_native_resource_agent 'complete' callback - it's called when 'aeron_driver_native_resource_agent_process_completions' is called */
 void aeron_driver_async_client_command_complete(
     int result,
     int errcode,
@@ -3332,7 +3320,7 @@ int aeron_driver_async_client_command_free(
     return 0;
 }
 
-void aeron_driver_async_client_command_cancel(void *task_clientd, void *executor_clientd)
+void aeron_driver_async_client_command_cancel(void *task_clientd)
 {
     aeron_driver_async_client_command_t *async_client_command = task_clientd;
     aeron_driver_async_client_command_free(async_client_command);
@@ -3344,8 +3332,8 @@ int aeron_driver_async_client_command_submit(
 {
     conductor->async_client_command_in_flight = true;
 
-    if (aeron_async_executor_submit(
-        &conductor->executor,
+    if (aeron_driver_native_resource_agent_proxy_submit(
+        conductor->context->native_resource_agent_proxy,
         aeron_driver_async_client_command_execute,
         aeron_driver_async_client_command_complete,
         aeron_driver_async_client_command_cancel,
@@ -3859,19 +3847,24 @@ static void aeron_driver_conductor_on_rb_command_queue(
     cmd->func(clientd, cmd);
 }
 
+static void aeron_driver_conductor_on_task_result(
+    int32_t msg_type_id,
+    const void *message,
+    size_t size,
+    void *clientd)
+{
+    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)message;
+    task->on_complete(
+        task->result,
+        task->errcode,
+        task->errmsg,
+        task->clientd,
+        clientd);
+}
+
 int aeron_driver_conductor_do_work(void *clientd)
 {
     aeron_driver_conductor_t *conductor = (aeron_driver_conductor_t *)clientd;
-
-    if (!conductor->is_started)
-    {
-        if (!conductor->context->async_executor_enabled)
-        {
-            aeron_async_executor_on_start(&conductor->executor, AERON_ASYNC_EXECUTOR_AGENT_ROLE_NAME);
-        }
-        conductor->is_started = true;
-    }
-
     const int64_t now_ns = conductor->context->nano_clock();
     aeron_driver_conductor_track_time(conductor, now_ns);
     const int64_t now_ms = aeron_clock_cached_epoch_time(conductor->context->cached_clock);
@@ -3913,12 +3906,11 @@ int aeron_driver_conductor_do_work(void *clientd)
     }
 
     work_count += aeron_driver_conductor_free_end_of_life_resources(conductor);
-    work_count += aeron_async_executor_process_completions(&conductor->executor, 1);
-
-    if (!conductor->context->async_executor_enabled)
-    {
-        work_count += aeron_async_executor_do_work(&conductor->executor);
-    }
+    work_count += (int)aeron_mpsc_rb_read(
+        &conductor->context->native_resource_agent_result_queue,
+        aeron_driver_conductor_on_task_result,
+        conductor,
+        AERON_COMMAND_DRAIN_LIMIT);
 
     return work_count;
 }
@@ -3926,8 +3918,6 @@ int aeron_driver_conductor_do_work(void *clientd)
 void aeron_driver_conductor_on_close(void *clientd)
 {
     aeron_driver_conductor_t *conductor = (aeron_driver_conductor_t *)clientd;
-
-    aeron_async_executor_close(&conductor->executor);
 
     for (size_t i = 0, length = conductor->clients.length; i < length; i++)
     {
@@ -6420,7 +6410,7 @@ void aeron_driver_conductor_on_re_resolve_endpoint_complete(
     aeron_free(async_cmd);
 }
 
-void aeron_driver_conductor_on_re_resolve_cancel(void *task_clientd, void *executor_clientd)
+void aeron_driver_conductor_on_re_resolve_cancel(void *task_clientd)
 {
     aeron_async_re_resolve_t *async_cmd = task_clientd;
     aeron_free(async_cmd);
@@ -6455,8 +6445,8 @@ void aeron_driver_conductor_on_re_resolve_endpoint(void *clientd, void *item)
     async_cmd->endpoint = endpoint;
     async_cmd->destination = NULL;
 
-    if (aeron_async_executor_submit(
-        &conductor->executor,
+    if (aeron_driver_native_resource_agent_proxy_submit(
+        conductor->context->native_resource_agent_proxy,
         aeron_driver_conductor_async_resolve_host_and_port_execute,
         aeron_driver_conductor_on_re_resolve_endpoint_complete,
         aeron_driver_conductor_on_re_resolve_cancel,
@@ -6521,8 +6511,8 @@ void aeron_driver_conductor_on_re_resolve_control(void *clientd, void *item)
     async_cmd->endpoint = cmd->endpoint;
     async_cmd->destination = cmd->destination;
 
-    if (aeron_async_executor_submit(
-        &conductor->executor,
+    if (aeron_driver_native_resource_agent_proxy_submit(
+        conductor->context->native_resource_agent_proxy,
         aeron_driver_conductor_async_resolve_host_and_port_execute,
         aeron_driver_conductor_on_re_resolve_control_complete,
         aeron_driver_conductor_on_re_resolve_cancel,
