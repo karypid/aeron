@@ -118,10 +118,19 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
 
     // free all scheduled but not executed commands
     while (0 != aeron_spsc_rb_read(
-        native_resource_agent->native_resource_agent_proxy.command_queue,
-        aeron_driver_native_resource_agent_cancel_task,
-        native_resource_agent,
-    SIZE_MAX))
+            native_resource_agent->native_resource_agent_proxy.command_queue,
+            aeron_driver_native_resource_agent_cancel_task,
+            native_resource_agent,
+            SIZE_MAX))
+    {
+    }
+
+    // free all completed but not consumed commands
+    while (0 != aeron_spsc_rb_read(
+            native_resource_agent->native_resource_agent_proxy.result_queue,
+            aeron_driver_native_resource_agent_cancel_task,
+            native_resource_agent,
+            SIZE_MAX))
     {
     }
 
