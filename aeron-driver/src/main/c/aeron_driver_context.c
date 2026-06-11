@@ -1445,6 +1445,7 @@ int aeron_driver_context_close(aeron_driver_context_t *context)
 
     aeron_free(context->conductor_command_queue.buffer);
     aeron_free(context->native_resource_agent_command_queue.buffer);
+    aeron_free(context->native_resource_agent_result_queue.buffer);
     aeron_free(context->sender_command_queue.buffer);
     aeron_free(context->receiver_command_queue.buffer);
 
