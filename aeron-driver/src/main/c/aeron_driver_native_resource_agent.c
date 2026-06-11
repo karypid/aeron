@@ -116,11 +116,14 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
 {
     aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
 
-    aeron_mpsc_rb_read(
+    // free all scheduled but not executed commands
+    while (0 != aeron_mpsc_rb_read(
         native_resource_agent->native_resource_agent_proxy.command_queue,
         aeron_driver_native_resource_agent_cancel_task,
         native_resource_agent,
-    SIZE_MAX);
+    SIZE_MAX))
+    {
+    }
 
     native_resource_agent->name_resolver->close_func(native_resource_agent->name_resolver);
 }
