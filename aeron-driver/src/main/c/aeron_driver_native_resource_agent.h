@@ -41,4 +41,12 @@ void aeron_driver_native_resource_agent_on_start(void *state, const char *role_n
 
 void aeron_driver_native_resource_agent_on_close(void *clientd);
 
+void aeron_driver_native_resource_agent_on_re_resolve_address(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
+
+void aeron_driver_native_resource_agent_on_task_execute(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
+
+void aeron_driver_native_resource_agent_on_task_cancel(aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
+
 #endif //AERON_DRIVER_NATIVE_RESOURCE_AGENT_H

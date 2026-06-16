@@ -18,21 +18,14 @@
 #include "aeron_driver_native_resource_agent_proxy.h"
 
 static void aeron_driver_native_resource_agent_proxy_offer(
-    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy, void *cmd, size_t length)
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_driver_native_resource_agent_proxy_cmd_t *cmd,
+    size_t length)
 {
-    aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(native_resource_agent_proxy->command_queue, 1, cmd, length)))
+    while (AERON_RB_SUCCESS != aeron_spsc_rb_write(native_resource_agent_proxy->command_queue, 1, cmd, length))
     {
         aeron_counter_increment_release(native_resource_agent_proxy->fail_counter);
         sched_yield();
-    }
-
-    if (AERON_RB_ERROR == result)
-    {
-        aeron_distinct_error_log_record(
-            native_resource_agent_proxy->native_resource_agent->context->error_log,
-            EINVAL,
-            "Error writing to native resource agent proxy ring buffer");
     }
 }
 
@@ -44,7 +37,8 @@ int aeron_driver_native_resource_agent_proxy_submit(
     void *clientd)
 {
     aeron_driver_native_resource_agent_task_t task;
-    task.native_resource_agent = native_resource_agent_proxy->native_resource_agent;
+    task.base.execute = aeron_driver_native_resource_agent_on_task_execute;
+    task.base.cancel = aeron_driver_native_resource_agent_on_task_cancel;
     task.on_execute = on_execute;
     task.on_complete = on_complete;
     task.on_cancel = on_cancel;
@@ -52,7 +46,9 @@ int aeron_driver_native_resource_agent_proxy_submit(
     task.result = -1;
 
     aeron_driver_native_resource_agent_proxy_offer(
-        native_resource_agent_proxy, &task, sizeof(aeron_driver_native_resource_agent_task_t));
+        native_resource_agent_proxy,
+        (aeron_driver_native_resource_agent_proxy_cmd_t *)&task,
+        sizeof(aeron_driver_native_resource_agent_task_t));
     return 0;
 }
 
@@ -60,19 +56,31 @@ void aeron_driver_native_resource_agent_proxy_on_task_complete(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_driver_native_resource_agent_task_t *task)
 {
-    aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(
-        native_resource_agent_proxy->result_queue, 1, task, sizeof(aeron_driver_native_resource_agent_task_t))))
+    while (AERON_RB_SUCCESS != aeron_spsc_rb_write(
+        native_resource_agent_proxy->result_queue, 1, task, sizeof(aeron_driver_native_resource_agent_task_t)))
     {
         aeron_counter_increment_release(native_resource_agent_proxy->fail_counter);
         sched_yield();
     }
+}
 
-    if (AERON_RB_ERROR == result)
-    {
-        aeron_distinct_error_log_record(
-            native_resource_agent_proxy->native_resource_agent->context->error_log,
-            EINVAL,
-            "Failed to write task result");
-    }
+void aeron_driver_native_resource_agent_proxy_re_resolve_address(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_name_resolver_async_resolve_t *address_resolution_params,
+    aeron_driver_native_resource_agent_command_result_t* result)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t cmd;
+    cmd.base.execute = aeron_driver_native_resource_agent_on_re_resolve_address;
+    cmd.base.cancel = NULL;
+    cmd.address_resolution_params = address_resolution_params;
+    cmd.result = result;
+    result->payload.success = NULL;
+    result->payload.error.code = 0;
+    result->payload.error.message = NULL;
+    result->state = AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING;
+
+    aeron_driver_native_resource_agent_proxy_offer(
+        native_resource_agent_proxy,
+        (aeron_driver_native_resource_agent_proxy_cmd_t *)&cmd,
+        sizeof(aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t));
 }

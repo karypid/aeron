@@ -19,34 +19,50 @@
 #include "aeron_driver_conductor.h"
 #include "util/aeron_error.h"
 
-static void aeron_driver_native_resource_agent_cancel_task(
-    int32_t msg_type_id,
-    const void *message,
-    size_t size,
-    void *clientd)
+static void aeron_driver_native_resource_agent_delete_task(
+    int32_t msg_type_id, const void *message, size_t size, void *clientd)
 {
-    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)message;
-    task->on_cancel(task->clientd);
+    aeron_driver_native_resource_agent_proxy_cmd_t *cmd = (aeron_driver_native_resource_agent_proxy_cmd_t *)message;
+    if (NULL != cmd->cancel)
+    {
+        cmd->cancel(cmd);
+    }
 }
 
-static void aeron_driver_native_resource_agent_execute_task(
-    int32_t msg_type_id,
-    const void *message,
-    size_t size,
-    void *clientd)
+static void aeron_driver_native_resource_agent_signal_error(
+    aeron_driver_native_resource_agent_t *native_resource_agent,
+    aeron_driver_native_resource_agent_command_result_t *result)
 {
-    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)message;
-    aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
+    int errcode = aeron_errcode();
+    const char* errmsg = aeron_errmsg();
+    size_t errmsg_len = strlen(errmsg);
 
-    task->result = task->on_execute(task->clientd, native_resource_agent->conductor);
-    if (task->result < 0)
+    if (aeron_alloc((void **)&result->payload.error.message, errmsg_len + 1) < 0)
     {
-        task->errcode = aeron_errcode();
-        memcpy(task->errmsg, aeron_errmsg(), strlen(aeron_errmsg()));
+        // FIXME: It over-writes the original error message/code
+        AERON_APPEND_ERR("failed to allocate error message: %s", aeron_errmsg());
+        aeron_distinct_error_log_record(
+            native_resource_agent->context->error_log, errcode, errmsg);
         aeron_err_clear();
     }
+    else
+    {
+        memcpy(result->payload.error.message, errmsg, errmsg_len);
+        result->payload.error.message[errmsg_len] = '\0';
+    }
+    result->payload.error.code = errcode;
 
-    aeron_driver_native_resource_agent_proxy_on_task_complete(&native_resource_agent->native_resource_agent_proxy, task);
+    aeron_err_clear();
+
+    AERON_SET_RELEASE(result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED);
+}
+
+static void aeron_driver_native_resource_agent_on_command(
+    int32_t msg_type_id, const void *message, size_t size, void *clientd)
+{
+    aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
+    aeron_driver_native_resource_agent_proxy_cmd_t *cmd = (aeron_driver_native_resource_agent_proxy_cmd_t *)message;
+    cmd->execute(native_resource_agent, cmd);
 }
 
 void aeron_driver_native_resource_agent_on_start(void *state, const char *role_name)
@@ -84,7 +100,7 @@ int aeron_driver_native_resource_agent_do_work(void *clientd)
 
     work_count += (int)aeron_spsc_rb_read(
         native_resource_agent->native_resource_agent_proxy.command_queue,
-        aeron_driver_native_resource_agent_execute_task,
+        aeron_driver_native_resource_agent_on_command,
         native_resource_agent,
     AERON_COMMAND_DRAIN_LIMIT);
 
@@ -121,7 +137,7 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
     {
         aeron_spsc_rb_read(
             native_resource_agent->native_resource_agent_proxy.command_queue,
-            aeron_driver_native_resource_agent_cancel_task,
+            aeron_driver_native_resource_agent_delete_task,
             native_resource_agent,
             SIZE_MAX);
     }
@@ -131,10 +147,57 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
     {
         aeron_spsc_rb_read(
             native_resource_agent->native_resource_agent_proxy.result_queue,
-            aeron_driver_native_resource_agent_cancel_task,
+            aeron_driver_native_resource_agent_delete_task,
             native_resource_agent,
             SIZE_MAX);
     }
 
     native_resource_agent->name_resolver->close_func(native_resource_agent->name_resolver);
+}
+
+void aeron_driver_native_resource_agent_on_re_resolve_address(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t *resolve_cmd =
+                (aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t *)cmd;
+    int rc = aeron_name_resolver_resolve_host_and_port(
+        native_resource_agent->name_resolver,
+        resolve_cmd->address_resolution_params->endpoint_name,
+        resolve_cmd->address_resolution_params->uri_param_name,
+        resolve_cmd->address_resolution_params->is_re_resolution,
+        &resolve_cmd->address_resolution_params->resolved_address);
+    if (rc < 0)
+    {
+        AERON_APPEND_ERR("%s", "address re-resolution failed");
+        aeron_driver_native_resource_agent_signal_error(native_resource_agent, resolve_cmd->result);
+    }
+    else
+    {
+        // FIXME: Store resolved address in the success state instead of `aeron_name_resolver_async_resolve_t->resolved_address`
+        AERON_SET_RELEASE(resolve_cmd->result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_SUCCEEDED);
+    }
+}
+
+void aeron_driver_native_resource_agent_on_task_execute(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
+{
+    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)cmd;
+    task->result = task->on_execute(task->clientd, native_resource_agent->conductor);
+    if (task->result < 0)
+    {
+        task->errcode = aeron_errcode();
+        const char* err = aeron_errmsg();
+        size_t err_len = strlen(err);
+        memcpy(task->errmsg, err, err_len);
+        task->errmsg[err_len] = '\0';
+        aeron_err_clear();
+    }
+
+    aeron_driver_native_resource_agent_proxy_on_task_complete(&native_resource_agent->native_resource_agent_proxy, task);
+}
+
+void aeron_driver_native_resource_agent_on_task_cancel(aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
+{
+    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)cmd;
+    task->on_cancel(task->clientd);
 }
