@@ -323,7 +323,6 @@ typedef struct aeron_driver_conductor_stct
     int64_t time_of_last_to_driver_position_change_ns;
     int64_t last_command_consumer_position;
 
-    bool async_client_command_in_flight;
     bool is_started;
 
     aeron_driver_conductor_client_command_t *client_command;

@@ -354,20 +354,6 @@ int aeron_driver_context_init(aeron_driver_context_t **context)
         goto error;
     }
 
-    void *native_resource_agent_result_buffer;
-    if (aeron_alloc(&native_resource_agent_result_buffer, command_rb_capacity))
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error;
-    }
-
-    if (aeron_spsc_rb_init(&_context->native_resource_agent_result_queue, native_resource_agent_result_buffer, command_rb_capacity))
-    {
-        AERON_APPEND_ERR("%s", "");
-        aeron_free(native_resource_agent_result_buffer);
-        goto error;
-    }
-
     void *conductor_buffer;
     if (aeron_alloc(&conductor_buffer, command_rb_capacity))
     {
@@ -1445,7 +1431,6 @@ int aeron_driver_context_close(aeron_driver_context_t *context)
 
     aeron_free(context->conductor_command_queue.buffer);
     aeron_free(context->native_resource_agent_command_queue.buffer);
-    aeron_free(context->native_resource_agent_result_queue.buffer);
     aeron_free(context->sender_command_queue.buffer);
     aeron_free(context->receiver_command_queue.buffer);
 

@@ -256,7 +256,6 @@ typedef struct aeron_driver_context_stct
     aeron_spsc_rb_t sender_command_queue;
     aeron_spsc_rb_t receiver_command_queue;
     aeron_spsc_rb_t native_resource_agent_command_queue;
-    aeron_spsc_rb_t native_resource_agent_result_queue;
 
     aeron_agent_on_start_func_t agent_on_start_func;
     void *agent_on_start_state;

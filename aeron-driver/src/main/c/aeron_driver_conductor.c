@@ -880,8 +880,6 @@ int aeron_driver_conductor_init(aeron_driver_conductor_t *conductor, aeron_drive
         &conductor->counters_manager, AERON_SYSTEM_COUNTER_CONDUCTOR_PROXY_FAILS);
     conductor->conductor_proxy.conductor = conductor;
 
-    conductor->async_client_command_in_flight = false;
-
     conductor->clients.array = NULL;
     conductor->clients.capacity = 0;
     conductor->clients.length = 0;
@@ -3178,11 +3176,6 @@ void aeron_driver_conductor_on_unavailable_image(
 
 static bool aeron_driver_conductor_not_accepting_client_commands(aeron_driver_conductor_t *conductor)
 {
-    if (conductor->async_client_command_in_flight)
-    {
-        return true;
-    }
-
     aeron_spsc_rb_t *sender_rb = conductor->context->sender_proxy->command_queue;
     aeron_spsc_rb_t *receiver_rb = conductor->context->receiver_proxy->command_queue;
     aeron_spsc_rb_t *native_resource_agent_rb = conductor->context->native_resource_agent_proxy->command_queue;
@@ -3197,6 +3190,7 @@ typedef struct aeron_driver_async_command_stct
     aeron_udp_channel_async_parse_t async_parse;
     aeron_driver_native_resource_agent_command_result_t async_parse_result;
     aeron_name_resolver_async_resolve_t async_resolve;
+    aeron_driver_native_resource_agent_command_result_t async_resolve_result;
     aeron_send_channel_endpoint_t *endpoint;
     aeron_uri_t *uri;
     void *original_command;
@@ -3204,86 +3198,12 @@ typedef struct aeron_driver_async_command_stct
 }
 aeron_driver_async_command_t;
 
-typedef int (*aeron_driver_async_client_command_on_execute_func_t)(aeron_driver_conductor_t *conductor, void *clientd);
-
-typedef int (*aeron_driver_async_client_command_on_complete_func_t)(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *clientd);
-
-typedef int (*aeron_driver_async_client_command_on_error_func_t)(
-    aeron_driver_conductor_t *conductor,
-    int result,
-    aeron_driver_async_command_t *async_command,
-    void *clientd);
-
 typedef struct aeron_driver_async_client_command_stct
 {
     aeron_driver_conductor_client_command_t base;
-    aeron_driver_async_client_command_on_execute_func_t on_execute;
-    void *on_execute_clientd; // this is passed to the on_execute callback
-    aeron_driver_async_client_command_on_complete_func_t on_complete;
-    aeron_driver_async_client_command_on_error_func_t on_error;
     aeron_driver_async_command_t async_command;
 }
 aeron_driver_async_client_command_t;
-
-/* This is an aeron_executor 'execute' callback - it's called from an executor thread */
-int aeron_driver_async_client_command_execute(void *task_clientd, void *executor_clientd)
-{
-    aeron_driver_async_client_command_t *async_client_command = task_clientd;
-    aeron_driver_conductor_t *conductor = executor_clientd;
-
-    if (async_client_command->on_execute(conductor, async_client_command->on_execute_clientd) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
-
-    return 0;
-}
-
-/* This is an aeron_driver_native_resource_agent 'complete' callback - it's called when 'aeron_driver_native_resource_agent_process_completions' is called */
-void aeron_driver_async_client_command_complete(
-    int result,
-    int errcode,
-    const char *errmsg,
-    void *task_clientd,
-    void *executor_clientd)
-{
-    aeron_driver_async_client_command_t *async_client_command = task_clientd;
-    aeron_driver_conductor_t *conductor = executor_clientd;
-    int64_t correlation_id = async_client_command->base.correlated->correlation_id;
-
-    conductor->async_client_command_in_flight = false;
-
-    if (result < 0)
-    {
-        if (NULL == async_client_command->on_error)
-        {
-            aeron_driver_conductor_on_error(conductor, errcode, errmsg, correlation_id);
-        }
-        else
-        {
-            // TODO set current errcode/errmsg to what was handed to this function???
-            if (async_client_command->on_error(
-                conductor,
-                result,
-                &async_client_command->async_command,
-                async_client_command->on_execute_clientd) < 0)
-            {
-                aeron_driver_conductor_on_error(conductor, aeron_errcode(), aeron_errmsg(), correlation_id);
-            }
-        }
-    }
-    else if (async_client_command->on_complete(
-        conductor, &async_client_command->async_command, async_client_command->on_execute_clientd) < 0)
-    {
-        aeron_driver_conductor_on_error(conductor, aeron_errcode(), aeron_errmsg(), correlation_id);
-    }
-
-    aeron_free(async_client_command);
-}
 
 int aeron_driver_async_client_command_allocate(
     aeron_driver_async_client_command_t **async_client_commandp,
@@ -3303,10 +3223,6 @@ int aeron_driver_async_client_command_allocate(
     async_client_command->base.execute = NULL;
     async_client_command->base.free = NULL;
     async_client_command->base.correlated = NULL;
-    async_client_command->on_error = NULL;
-    async_client_command->on_execute = NULL;
-    async_client_command->on_execute_clientd = NULL;
-    async_client_command->on_complete = NULL;
     async_client_command->async_command.uri = NULL;
     async_client_command->async_command.endpoint = NULL;
     async_client_command->async_command.async_parse.channel = NULL;
@@ -3331,78 +3247,14 @@ static void aeron_driver_conductor_free_result(aeron_driver_native_resource_agen
     aeron_free(result->payload.error.message);
 }
 
-int aeron_driver_async_client_command_free(aeron_driver_async_client_command_t *async_client_command)
+void aeron_driver_async_client_command_free(aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *async_client_command = (aeron_driver_async_client_command_t *)cmd;
     aeron_udp_channel_delete(async_client_command->async_command.async_parse.channel);
     aeron_driver_conductor_free_result(&async_client_command->async_command.async_parse_result);
     aeron_uri_close(async_client_command->async_command.uri);
     aeron_free(async_client_command->async_command.uri);
     aeron_free(async_client_command);
-    return 0;
-}
-
-void aeron_driver_async_client_command_free2(aeron_driver_conductor_client_command_t *cmd)
-{
-    aeron_driver_async_client_command_free((aeron_driver_async_client_command_t *)cmd);
-}
-
-void aeron_driver_async_client_command_cancel(void *task_clientd)
-{
-    aeron_driver_async_client_command_free(task_clientd);
-}
-
-int aeron_driver_async_client_command_submit(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_client_command_t *async_client_command)
-{
-    conductor->async_client_command_in_flight = true;
-
-    if (aeron_driver_native_resource_agent_proxy_submit(
-        conductor->context->native_resource_agent_proxy,
-        aeron_driver_async_client_command_execute,
-        aeron_driver_async_client_command_complete,
-        aeron_driver_async_client_command_cancel,
-        async_client_command) < 0)
-    {
-        conductor->async_client_command_in_flight = false;
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
-
-    return 0;
-}
-
-int aeron_driver_async_parse_udp_channel_execute(aeron_driver_conductor_t *conductor, void *clientd)
-{
-    aeron_udp_channel_async_parse_t *async_parse = clientd;
-
-    if (aeron_udp_channel_finish_parse(
-        &conductor->name_resolver,
-        async_parse) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
-
-    return 0;
-}
-
-int aeron_driver_async_resolve_execute(aeron_driver_conductor_t *conductor, void *clientd)
-{
-    aeron_name_resolver_async_resolve_t *async_resolve = clientd;
-
-    if (aeron_name_resolver_resolve_host_and_port(
-        &conductor->name_resolver,
-        async_resolve->endpoint_name,
-        async_resolve->uri_param_name,
-        async_resolve->is_re_resolution,
-        &async_resolve->resolved_address) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
-
-    return 0;
 }
 
 typedef struct aeron_async_re_resolve_stct
@@ -3415,20 +3267,6 @@ typedef struct aeron_async_re_resolve_stct
     aeron_driver_native_resource_agent_command_result_t resolution_result;
 }
 aeron_async_re_resolve_t;
-
-int aeron_driver_conductor_async_resolve_host_and_port_execute(void *task_clientd, void *executor_clientd)
-{
-    aeron_async_re_resolve_t *async_cmd = task_clientd;
-    aeron_driver_conductor_t *conductor = executor_clientd;
-
-    if (aeron_driver_async_resolve_execute(conductor, &async_cmd->async_resolve) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        return -1;
-    }
-
-    return 0;
-}
 
 aeron_rb_read_action_t aeron_driver_conductor_on_command(
     int32_t msg_type_id, const void *message, size_t length, void *clientd)
@@ -3805,11 +3643,6 @@ aeron_rb_read_action_t aeron_driver_conductor_on_command(
         aeron_driver_conductor_on_error(conductor, aeron_errcode(), aeron_errmsg(), correlation_id);
     }
 
-    if (conductor->async_client_command_in_flight)
-    {
-        return AERON_RB_BREAK;
-    }
-
     return AERON_RB_CONTINUE;
 
 malformed_command:
@@ -3874,32 +3707,14 @@ static void aeron_driver_conductor_on_rb_command_queue(
     cmd->func(clientd, cmd);
 }
 
-static void aeron_driver_conductor_on_task_result(
-    int32_t msg_type_id,
-    const void *message,
-    size_t size,
-    void *clientd)
-{
-    aeron_driver_native_resource_agent_task_t *task = (aeron_driver_native_resource_agent_task_t *)message;
-    task->on_complete(
-        task->result,
-        task->errcode,
-        task->errmsg,
-        task->clientd,
-        clientd);
-}
-
 static int aeron_driver_conductor_process_client_commands(aeron_driver_conductor_t *conductor)
 {
     int work_count = 0;
 
     if (NULL == conductor->client_command)
     {
-        if (!conductor->async_client_command_in_flight)
-        {
-            work_count += (int)aeron_mpsc_rb_controlled_read(
-                &conductor->to_driver_commands, aeron_driver_conductor_on_command, conductor, AERON_COMMAND_DRAIN_LIMIT);
-        }
+        work_count += (int)aeron_mpsc_rb_controlled_read(
+            &conductor->to_driver_commands, aeron_driver_conductor_on_command, conductor, AERON_COMMAND_DRAIN_LIMIT);
     }
     else
     {
@@ -4006,11 +3821,6 @@ int aeron_driver_conductor_do_work(void *clientd)
     }
 
     work_count += aeron_driver_conductor_free_end_of_life_resources(conductor);
-    work_count += (int)aeron_spsc_rb_read(
-        &conductor->context->native_resource_agent_result_queue,
-        aeron_driver_conductor_on_task_result,
-        conductor,
-        AERON_COMMAND_DRAIN_LIMIT);
 
     return work_count;
 }
@@ -4411,6 +4221,7 @@ int aeron_driver_conductor_execute_add_network_publication(
     if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
     {
         aeron_driver_conductor_set_error_from_result(&async_command->async_command.async_parse_result);
+        AERON_APPEND_ERR("%s", "");
         return -1;
     }
 
@@ -4562,7 +4373,7 @@ int aeron_driver_conductor_on_add_network_publication(
     async_client_command->async_command.is_exclusive = is_exclusive;
 
     async_client_command->base.execute = aeron_driver_conductor_execute_add_network_publication;
-    async_client_command->base.free = aeron_driver_async_client_command_free2;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
     async_client_command->base.correlated =
         &((aeron_publication_command_t *)async_client_command->async_command.original_command)->correlated;
@@ -4575,7 +4386,7 @@ int aeron_driver_conductor_on_add_network_publication(
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
@@ -4703,14 +4514,30 @@ error_cleanup:
     return -1;
 }
 
-int aeron_driver_conductor_on_add_spy_subscription_complete(
+int aeron_driver_conductor_execute_add_spy_subscription(
     aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+    aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+    aeron_driver_native_resource_agent_command_state_t parse_state;
+    AERON_GET_ACQUIRE(parse_state, async_command->async_parse_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == parse_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
+    {
+        aeron_driver_conductor_set_error_from_result(&async_command->async_parse_result);
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
     aeron_subscription_command_t *command = async_command->original_command;
-    aeron_udp_channel_async_parse_t *async_parse = on_execute_clientd;
-    aeron_udp_channel_t *udp_channel = async_parse->channel;
+    aeron_udp_channel_t *udp_channel = async_command->async_parse.channel;
+    async_command->async_parse.channel = NULL;
     const char *uri = (const char *)command + sizeof(aeron_subscription_command_t);
     aeron_driver_uri_subscription_params_t params;
 
@@ -4783,7 +4610,7 @@ int aeron_driver_conductor_on_add_spy_subscription_complete(
         }
     }
 
-    return 0;
+    return 1;
 }
 
 int aeron_driver_conductor_on_add_spy_subscription(
@@ -4809,24 +4636,24 @@ int aeron_driver_conductor_on_add_spy_subscription(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_parse.is_destination = false;
 
     async_client_command->base.correlated =
         &((aeron_subscription_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_parse_udp_channel_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_parse;
-    async_client_command->on_complete = aeron_driver_conductor_on_add_spy_subscription_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_add_spy_subscription;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_parse,
+        &async_client_command->async_command.async_parse_result);
 
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
@@ -4854,13 +4681,30 @@ int aeron_driver_conductor_add_network_subscription_to_receiver(
     return 0;
 }
 
-int aeron_driver_conductor_on_add_network_subscription_complete(
+int aeron_driver_conductor_execute_add_network_subscription(
     aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+    aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+
+    aeron_driver_native_resource_agent_command_state_t parse_state;
+    AERON_GET_ACQUIRE(parse_state, async_command->async_parse_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == parse_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
+    {
+        aeron_driver_conductor_set_error_from_result(&async_command->async_parse_result);
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
     aeron_subscription_command_t *command = async_command->original_command;
-    aeron_udp_channel_async_parse_t *async_parse = on_execute_clientd;
+    aeron_udp_channel_async_parse_t *async_parse = &async_command->async_parse;
     aeron_udp_channel_t *udp_channel = async_parse->channel;
     int64_t correlation_id = command->correlated.correlation_id;
 
@@ -4874,14 +4718,14 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
         aeron_driver_conductor_validate_control_for_subscription(udp_channel) < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
     const aeron_udp_channel_control_mode control_mode = udp_channel->control_mode;
 
     if (aeron_driver_conductor_has_clashing_subscription(conductor, udp_channel, command->stream_id, &params))
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
     aeron_receive_channel_endpoint_t *endpoint = aeron_driver_conductor_get_or_add_receive_channel_endpoint(
@@ -4890,7 +4734,8 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
     {
         AERON_APPEND_ERR("%s", "");
         udp_channel = NULL; // deleted by the previous method
-        goto error_cleanup;
+        async_command->async_parse.channel = NULL;
+        return -1;
     }
 
     if (endpoint->conductor_fields.udp_channel != udp_channel)
@@ -4899,6 +4744,7 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
     }
     // Ownership is transferred to the channel.
     udp_channel = NULL;
+    async_command->async_parse.channel = NULL;
 
     if (AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_ACTIVE != endpoint->conductor_fields.status)
     {
@@ -4906,13 +4752,13 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
             -AERON_ERROR_CODE_RESOURCE_TEMPORARILY_UNAVAILABLE,
             "%s",
             "receive_channel_endpoint found in CLOSING state, please retry");
-        goto error_cleanup;
+        return -1;
     }
 
     if (NULL == aeron_driver_conductor_get_or_add_client(conductor, command->correlated.client_id))
     {
         AERON_APPEND_ERR("%s", "Failed to add client");
-        goto error_cleanup;
+        return -1;
     }
 
     if (AERON_UDP_CHANNEL_CONTROL_MODE_RESPONSE == control_mode)
@@ -4920,7 +4766,7 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
         if (aeron_receive_channel_endpoint_incref_to_response_stream(endpoint, command->stream_id) < 0)
         {
             AERON_APPEND_ERR("%s", "");
-            goto error_cleanup;
+            return -1;
         }
     }
     else
@@ -4929,7 +4775,7 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
             endpoint, command->stream_id, params.has_session_id, params.session_id) < 0)
         {
             AERON_APPEND_ERR("%s", "");
-            goto error_cleanup;
+            return -1;
         }
     }
 
@@ -4987,16 +4833,14 @@ int aeron_driver_conductor_on_add_network_subscription_complete(
                     image->log_file_name) < 0)
                 {
                     AERON_APPEND_ERR("%s", "");
-                    goto error_cleanup;
+                    return -1;
                 }
             }
         }
 
-        return 0;
+        return 1;
     }
 
-error_cleanup:
-    aeron_udp_channel_delete(udp_channel);
     return -1;
 }
 
@@ -5023,24 +4867,24 @@ int aeron_driver_conductor_on_add_network_subscription(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_parse.is_destination = false;
 
     async_client_command->base.correlated =
         &((aeron_subscription_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_parse_udp_channel_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_parse;
-    async_client_command->on_complete = aeron_driver_conductor_on_add_network_subscription_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_add_network_subscription;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_parse,
+        &async_client_command->async_command.async_parse_result);
 
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
@@ -5127,40 +4971,40 @@ int aeron_driver_conductor_on_client_keepalive(aeron_driver_conductor_t *conduct
     return 0;
 }
 
-int aeron_driver_conductor_on_add_send_destination_complete(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+int aeron_driver_conductor_execute_add_send_destination(
+    aeron_driver_conductor_t *conductor, aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+    aeron_driver_native_resource_agent_command_state_t resolution_state;
+    AERON_GET_ACQUIRE(resolution_state, async_command->async_resolve_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == resolution_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == resolution_state)
+    {
+        memset(&async_command->async_resolve.resolved_address, 0, sizeof(async_command->async_resolve.resolved_address));
+        async_command->async_resolve.resolved_address.ss_family = AF_UNSPEC;
+        // TODO: deliberate fallthrough, i.e. add unknown destination??? Check java side
+    }
+
     aeron_destination_command_t *command = async_command->original_command;
-    aeron_name_resolver_async_resolve_t *async_resolve = on_execute_clientd;
 
     aeron_driver_sender_proxy_on_add_destination(
         conductor->context->sender_proxy,
         async_command->endpoint,
         async_command->uri,
-        &async_resolve->resolved_address,
+        &async_command->async_resolve.resolved_address,
         command->correlated.correlation_id);
 
     aeron_driver_conductor_on_operation_succeeded(conductor, command->correlated.correlation_id);
 
     async_command->uri = NULL;
 
-    return 0;
-}
-
-int aeron_driver_conductor_on_add_send_destination_error(
-    aeron_driver_conductor_t *conductor,
-    int result,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
-{
-    aeron_name_resolver_async_resolve_t *async_resolve = (aeron_name_resolver_async_resolve_t *)on_execute_clientd;
-
-    memset(&async_resolve->resolved_address, 0, sizeof(async_resolve->resolved_address));
-    async_resolve->resolved_address.ss_family = AF_UNSPEC;
-
-    return aeron_driver_conductor_on_add_send_destination_complete(conductor, async_command, on_execute_clientd);
+    return 1;
 }
 
 int aeron_driver_conductor_on_add_send_destination(
@@ -5243,27 +5087,25 @@ int aeron_driver_conductor_on_add_send_destination(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_resolve.uri_param_name = AERON_UDP_CHANNEL_ENDPOINT_KEY;
     async_client_command->async_command.async_resolve.is_re_resolution = false;
     COPY_ENDPOINT_NAME(async_client_command->async_command.async_resolve.endpoint_name, uri->params.udp.endpoint);
 
-    // TODO instead of storing the pointer, should we be looking this up again in the on_complete callback?
+    // FIXME: instead of storing the pointer, should we be looking this up again in the on_complete callback?
     async_client_command->async_command.endpoint = endpoint;
     async_client_command->async_command.uri = uri;
 
     async_client_command->base.correlated =
         &((aeron_destination_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_resolve_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_resolve;
-    async_client_command->on_complete = aeron_driver_conductor_on_add_send_destination_complete;
-    async_client_command->on_error = aeron_driver_conductor_on_add_send_destination_error;
+    async_client_command->base.execute = aeron_driver_conductor_execute_add_send_destination;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        aeron_driver_async_client_command_free(async_client_command);
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_resolve_address(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_resolve,
+        &async_client_command->async_command.async_resolve_result);
 
     return 0;
 
@@ -5273,19 +5115,33 @@ error_cleanup:
     return -1;
 }
 
-int aeron_driver_conductor_on_remove_send_destination_complete(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+int aeron_driver_conductor_execute_remove_send_destination(
+    aeron_driver_conductor_t *conductor, aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
     aeron_destination_command_t *command = async_command->original_command;
-    aeron_name_resolver_async_resolve_t *async_resolve = on_execute_clientd;
+
+    aeron_driver_native_resource_agent_command_state_t resolution_state;
+    AERON_GET_ACQUIRE(resolution_state, async_command->async_resolve_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == resolution_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == resolution_state)
+    {
+        memset(&async_command->async_resolve.resolved_address, 0, sizeof(async_command->async_resolve.resolved_address));
+        async_command->async_resolve.resolved_address.ss_family = AF_UNSPEC;
+        // TODO: deliberate fallthrough, i.e. add unknown destination??? Check java side
+    }
 
     aeron_driver_sender_proxy_on_remove_destination(
-        conductor->context->sender_proxy, async_command->endpoint, &async_resolve->resolved_address);
+        conductor->context->sender_proxy, async_command->endpoint, &async_command->async_resolve.resolved_address);
     aeron_driver_conductor_on_operation_succeeded(conductor, command->correlated.correlation_id);
 
-    return 0;
+    return 1;
 }
 
 int aeron_driver_conductor_on_remove_send_destination(
@@ -5350,6 +5206,8 @@ int aeron_driver_conductor_on_remove_send_destination(
         goto cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_resolve.uri_param_name = AERON_UDP_CHANNEL_ENDPOINT_KEY;
     async_client_command->async_command.async_resolve.is_re_resolution = true;
     COPY_ENDPOINT_NAME(async_client_command->async_command.async_resolve.endpoint_name, uri_params.params.udp.endpoint);
@@ -5359,16 +5217,13 @@ int aeron_driver_conductor_on_remove_send_destination(
 
     async_client_command->base.correlated =
         &((aeron_destination_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_resolve_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_resolve;
-    async_client_command->on_complete = aeron_driver_conductor_on_remove_send_destination_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_remove_send_destination;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        aeron_driver_async_client_command_free(async_client_command);
-        AERON_APPEND_ERR("%s", "");
-        goto cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_resolve_address(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_resolve,
+        &async_client_command->async_command.async_resolve_result);
 
     rc = 0;
 
@@ -5547,23 +5402,38 @@ error_cleanup:
     return -1;
 }
 
-int aeron_driver_conductor_on_add_receive_spy_destination_complete(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+int aeron_driver_conductor_execute_add_receive_spy_destination(
+    aeron_driver_conductor_t *conductor, aeron_driver_conductor_client_command_t *cmd)
 {
-    aeron_destination_command_t *command = async_command->original_command;
-    aeron_udp_channel_async_parse_t *async_parse = on_execute_clientd;
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+    aeron_driver_native_resource_agent_command_state_t parse_state;
+    AERON_GET_ACQUIRE(parse_state, async_command->async_parse_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == parse_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
+    {
+        aeron_driver_conductor_set_error_from_result(&async_command->async_parse_result);
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
+    aeron_udp_channel_async_parse_t *async_parse = &async_command->async_parse;
     aeron_udp_channel_t *udp_channel = async_parse->channel;
 
     aeron_subscription_link_t *mds_subscription_link = NULL;
+    aeron_destination_command_t *command = async_command->original_command;
     const char *command_uri = (const char *)command + sizeof(aeron_destination_command_t);
     aeron_driver_uri_subscription_params_t params;
 
     if (aeron_driver_uri_subscription_params(&udp_channel->uri, &params, conductor) < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
     mds_subscription_link = aeron_driver_conductor_find_mds_subscription(
@@ -5571,7 +5441,7 @@ int aeron_driver_conductor_on_add_receive_spy_destination_complete(
     if (NULL == mds_subscription_link)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
     int ensure_capacity_result = 0;
@@ -5579,8 +5449,10 @@ int aeron_driver_conductor_on_add_receive_spy_destination_complete(
     if (ensure_capacity_result < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
+
+    async_parse->channel = NULL; // ownership transfer
 
     aeron_subscription_link_t *link = &conductor->spy_subscriptions.array[conductor->spy_subscriptions.length++];
     aeron_driver_init_subscription_channel(command->channel_length, command_uri, link);
@@ -5627,18 +5499,12 @@ int aeron_driver_conductor_on_add_receive_spy_destination_complete(
                 publication->log_file_name) < 0)
             {
                 AERON_APPEND_ERR("%s", "");
-                goto error_cleanup_skip_channel_delete;
+                return -1;
             }
         }
     }
 
-    return 0;
-
-error_cleanup:
-    aeron_udp_channel_delete(udp_channel);
-
-error_cleanup_skip_channel_delete:
-    return -1;
+    return 1;
 }
 
 int aeron_driver_conductor_on_add_receive_spy_destination(
@@ -5664,34 +5530,50 @@ int aeron_driver_conductor_on_add_receive_spy_destination(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_parse.is_destination = true;
 
     async_client_command->base.correlated =
         &((aeron_destination_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_parse_udp_channel_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_parse;
-    async_client_command->on_complete = aeron_driver_conductor_on_add_receive_spy_destination_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_add_receive_spy_destination;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_parse,
+        &async_client_command->async_command.async_parse_result);
 
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
-int aeron_driver_conductor_on_add_receive_network_destination_complete(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+int aeron_driver_conductor_execute_add_receive_network_destination(
+    aeron_driver_conductor_t *conductor, aeron_driver_conductor_client_command_t *cmd)
 {
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+
+    aeron_driver_native_resource_agent_command_state_t parse_state;
+    AERON_GET_ACQUIRE(parse_state, async_command->async_parse_result.state);
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == parse_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
+    {
+        aeron_driver_conductor_set_error_from_result(&async_command->async_parse_result);
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
     aeron_destination_command_t *command = async_command->original_command;
-    aeron_udp_channel_async_parse_t *async_parse = on_execute_clientd;
+    aeron_udp_channel_async_parse_t *async_parse = &async_command->async_parse;
     aeron_udp_channel_t *udp_channel = async_parse->channel;
 
     aeron_subscription_link_t *mds_subscription_link = NULL;
@@ -5701,7 +5583,8 @@ int aeron_driver_conductor_on_add_receive_network_destination_complete(
         conductor, command->correlated.client_id, command->registration_id);
     if (NULL == mds_subscription_link)
     {
-        goto error_cleanup;
+        AERON_APPEND_ERR("%s", "");
+        return -1;
     }
 
     endpoint = mds_subscription_link->endpoint;
@@ -5709,13 +5592,13 @@ int aeron_driver_conductor_on_add_receive_network_destination_complete(
     if (aeron_driver_conductor_validate_destination_uri_params(&udp_channel->uri, udp_channel->uri_length) < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
     if (aeron_driver_conductor_update_and_check_ats_status(conductor->context, udp_channel, NULL) < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
     aeron_receive_destination_t *destination = NULL;
@@ -5730,20 +5613,15 @@ int aeron_driver_conductor_on_add_receive_network_destination_complete(
         endpoint->channel_status.counter_id) < 0)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
-    udp_channel = NULL;
+    async_parse->channel = NULL; // prevent deletion when command is freed
 
     aeron_driver_receiver_proxy_on_add_destination(conductor->context->receiver_proxy, endpoint, destination);
     aeron_driver_conductor_on_operation_succeeded(conductor, command->correlated.correlation_id);
 
-    return 0;
-
-error_cleanup:
-    aeron_udp_channel_delete(udp_channel);
-
-    return -1;
+    return 1;
 }
 
 int aeron_driver_conductor_on_add_receive_network_destination(
@@ -5769,24 +5647,24 @@ int aeron_driver_conductor_on_add_receive_network_destination(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_parse.is_destination = true;
 
     async_client_command->base.correlated =
         &((aeron_destination_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_parse_udp_channel_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_parse;
-    async_client_command->on_complete = aeron_driver_conductor_on_add_receive_network_destination_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_add_receive_network_destination;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_parse,
+        &async_client_command->async_command.async_parse_result);
 
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
@@ -5890,35 +5768,44 @@ int aeron_driver_conductor_on_remove_receive_spy_destination(
     return 0;
 }
 
-int aeron_driver_conductor_on_remove_receive_network_destination_complete(
-    aeron_driver_conductor_t *conductor,
-    aeron_driver_async_command_t *async_command,
-    void *on_execute_clientd)
+int aeron_driver_conductor_execute_remove_receive_network_destination(
+    aeron_driver_conductor_t *conductor, aeron_driver_conductor_client_command_t *cmd)
 {
-    aeron_destination_command_t *command = async_command->original_command;
-    aeron_udp_channel_async_parse_t *async_parse = on_execute_clientd;
-    aeron_udp_channel_t *udp_channel = async_parse->channel;
-    aeron_subscription_link_t *mds_subscription_link = NULL;
-    aeron_receive_channel_endpoint_t *endpoint = NULL;
+    aeron_driver_async_client_command_t *client_command = (aeron_driver_async_client_command_t *)cmd;
+    aeron_driver_async_command_t *async_command = &client_command->async_command;
+    aeron_driver_native_resource_agent_command_state_t parse_state;
+    AERON_GET_ACQUIRE(parse_state, async_command->async_parse_result.state);
 
-    mds_subscription_link = aeron_driver_conductor_find_mds_subscription(
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING == parse_state)
+    {
+        return 0;
+    }
+
+    if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == parse_state)
+    {
+        aeron_driver_conductor_set_error_from_result(&async_command->async_parse_result);
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
+    aeron_destination_command_t *command = async_command->original_command;
+    aeron_udp_channel_async_parse_t *async_parse = &async_command->async_parse;
+    aeron_udp_channel_t *udp_channel = async_parse->channel;
+    aeron_subscription_link_t *mds_subscription_link = aeron_driver_conductor_find_mds_subscription(
         conductor, command->correlated.client_id, command->registration_id);
     if (NULL == mds_subscription_link)
     {
         AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
+        return -1;
     }
 
-    endpoint = mds_subscription_link->endpoint;
+    async_parse->channel = NULL; // prevent deletion when command is freed
 
-    aeron_driver_receiver_proxy_on_remove_destination(conductor->context->receiver_proxy, endpoint, udp_channel);
+    aeron_driver_receiver_proxy_on_remove_destination(
+        conductor->context->receiver_proxy, mds_subscription_link->endpoint, udp_channel);
     aeron_driver_conductor_on_operation_succeeded(conductor, command->correlated.correlation_id);
 
-    return 0;
-
-error_cleanup:
-    aeron_udp_channel_delete(udp_channel);
-    return -1;
+    return 1;
 }
 
 int aeron_driver_conductor_on_remove_receive_network_destination(
@@ -5944,24 +5831,24 @@ int aeron_driver_conductor_on_remove_receive_network_destination(
         goto error_cleanup;
     }
 
+    aeron_driver_conductor_schedule_client_command(conductor, (aeron_driver_conductor_client_command_t *)async_client_command);
+
     async_client_command->async_command.async_parse.is_destination = true;
 
     async_client_command->base.correlated =
         &((aeron_destination_command_t *)async_client_command->async_command.original_command)->correlated;
-    async_client_command->on_execute = aeron_driver_async_parse_udp_channel_execute;
-    async_client_command->on_execute_clientd = &async_client_command->async_command.async_parse;
-    async_client_command->on_complete = aeron_driver_conductor_on_remove_receive_network_destination_complete;
+    async_client_command->base.execute = aeron_driver_conductor_execute_remove_receive_network_destination;
+    async_client_command->base.free = aeron_driver_async_client_command_free;
 
-    if (aeron_driver_async_client_command_submit(conductor, async_client_command) < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-        goto error_cleanup;
-    }
+    aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+        conductor->context->native_resource_agent_proxy,
+        &async_client_command->async_command.async_parse,
+        &async_client_command->async_command.async_parse_result);
 
     return 0;
 
 error_cleanup:
-    aeron_driver_async_client_command_free(async_client_command);
+    aeron_driver_async_client_command_free((aeron_driver_conductor_client_command_t *)async_client_command);
     return -1;
 }
 
@@ -6535,6 +6422,7 @@ int aeron_driver_conductor_execute_re_resolve_endpoint(
     if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == state)
     {
         aeron_driver_conductor_set_error_from_result(&async_cmd->resolution_result);
+        AERON_APPEND_ERR("%s", "");
         return -1;
     }
 
@@ -6582,7 +6470,7 @@ void aeron_driver_conductor_on_re_resolve_endpoint(void *clientd, void *item)
     async_cmd->base.execute = aeron_driver_conductor_execute_re_resolve_endpoint;
     async_cmd->base.free = aeron_driver_conductor_free_aeron_async_re_resolve_cmd;
 
-    aeron_driver_native_resource_agent_proxy_re_resolve_address(
+    aeron_driver_native_resource_agent_proxy_resolve_address(
         conductor->context->native_resource_agent_proxy, &async_cmd->async_resolve, &async_cmd->resolution_result);
 
     aeron_driver_conductor_schedule_driver_command(conductor, (aeron_driver_conductor_driver_command_t *)async_cmd);
@@ -6603,6 +6491,7 @@ int aeron_driver_conductor_execute_re_resolve_control(
     if (AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_FAILED == state)
     {
         aeron_driver_conductor_set_error_from_result(&async_cmd->resolution_result);
+        AERON_APPEND_ERR("%s", "");
         return -1;
     }
 
@@ -6646,7 +6535,7 @@ void aeron_driver_conductor_on_re_resolve_control(void *clientd, void *item)
     async_cmd->base.execute = aeron_driver_conductor_execute_re_resolve_control;
     async_cmd->base.free = aeron_driver_conductor_free_aeron_async_re_resolve_cmd;
 
-    aeron_driver_native_resource_agent_proxy_re_resolve_address(
+    aeron_driver_native_resource_agent_proxy_resolve_address(
         conductor->context->native_resource_agent_proxy, &async_cmd->async_resolve, &async_cmd->resolution_result);
 
     aeron_driver_conductor_schedule_driver_command(conductor, (aeron_driver_conductor_driver_command_t *)async_cmd);
