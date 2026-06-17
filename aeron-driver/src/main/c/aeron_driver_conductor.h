@@ -169,12 +169,20 @@ typedef struct aeron_end_of_life_resource_stct aeron_end_of_life_resource_t;
 
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
-typedef struct aeron_driver_conductor_base_command_stct
+typedef struct aeron_driver_conductor_driver_command_stct
 {
-    bool (*execute)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_base_command_stct *cmd);
-    void (*free)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_base_command_stct *cmd);
+    int (*execute)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_driver_command_stct *cmd);
+    void (*free)(struct aeron_driver_conductor_driver_command_stct *cmd);
 }
-aeron_driver_conductor_base_command_t;
+aeron_driver_conductor_driver_command_t;
+
+typedef struct aeron_driver_conductor_client_command_stct
+{
+    int (*execute)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_client_command_stct *cmd);
+    void (*free)(struct aeron_driver_conductor_client_command_stct *cmd);
+    aeron_correlated_command_t *correlated;
+}
+aeron_driver_conductor_client_command_t;
 
 typedef struct aeron_driver_conductor_stct
 {
@@ -318,8 +326,8 @@ typedef struct aeron_driver_conductor_stct
     bool async_client_command_in_flight;
     bool is_started;
 
-    aeron_driver_conductor_base_command_t *client_command;
-    aeron_driver_conductor_base_command_t *driver_command;
+    aeron_driver_conductor_client_command_t *client_command;
+    aeron_driver_conductor_driver_command_t *driver_command;
 
     uint8_t padding[AERON_CACHE_LINE_LENGTH];
 }

@@ -20,6 +20,7 @@
 #include "aeron_driver_context.h"
 #include "aeron_name_resolver.h"
 #include "concurrent/aeron_spsc_rb.h"
+#include "media/aeron_udp_channel.h"
 
 typedef struct aeron_driver_native_resource_agent_stct aeron_driver_native_resource_agent_t;
 
@@ -77,6 +78,14 @@ typedef struct aeron_driver_native_resource_agent_proxy_cmd_resolve_address_stct
 }
 aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t;
 
+typedef struct aeron_driver_native_resource_agent_proxy_cmd_parse_channel_stct
+{
+    aeron_driver_native_resource_agent_proxy_cmd_t base;
+    aeron_udp_channel_async_parse_t *async_parse;
+    aeron_driver_native_resource_agent_command_result_t *result;
+}
+aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t;
+
 typedef struct aeron_driver_native_resource_agent_task_stct
 {
     aeron_driver_native_resource_agent_proxy_cmd_t base;
@@ -101,10 +110,14 @@ void aeron_driver_native_resource_agent_proxy_on_task_complete(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_driver_native_resource_agent_task_t *task);
 
-
 void aeron_driver_native_resource_agent_proxy_re_resolve_address(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_name_resolver_async_resolve_t *address_resolution_params,
-    aeron_driver_native_resource_agent_command_result_t* result);
+    aeron_driver_native_resource_agent_command_result_t *result);
+
+void aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_udp_channel_async_parse_t *async_parse,
+    aeron_driver_native_resource_agent_command_result_t *result);
 
 #endif //AERON_DRIVER_NATIVE_RESOURCE_AGENT_PROXY_H

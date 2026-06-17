@@ -64,6 +64,15 @@ void aeron_driver_native_resource_agent_proxy_on_task_complete(
     }
 }
 
+static void aeron_driver_native_resource_agent_proxy_init_result(
+    aeron_driver_native_resource_agent_command_result_t* result)
+{
+    result->payload.success = NULL;
+    result->payload.error.code = 0;
+    result->payload.error.message = NULL;
+    result->state = AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING;
+}
+
 void aeron_driver_native_resource_agent_proxy_re_resolve_address(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_name_resolver_async_resolve_t *address_resolution_params,
@@ -74,13 +83,28 @@ void aeron_driver_native_resource_agent_proxy_re_resolve_address(
     cmd.base.cancel = NULL;
     cmd.address_resolution_params = address_resolution_params;
     cmd.result = result;
-    result->payload.success = NULL;
-    result->payload.error.code = 0;
-    result->payload.error.message = NULL;
-    result->state = AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_PENDING;
+    aeron_driver_native_resource_agent_proxy_init_result(result);
 
     aeron_driver_native_resource_agent_proxy_offer(
         native_resource_agent_proxy,
         (aeron_driver_native_resource_agent_proxy_cmd_t *)&cmd,
         sizeof(aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t));
+}
+
+void aeron_driver_native_resource_agent_proxy_parse_udp_channel(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_udp_channel_async_parse_t *async_parse,
+    aeron_driver_native_resource_agent_command_result_t *result)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t cmd;
+    cmd.base.execute = aeron_driver_native_resource_agent_on_parse_udp_channel;
+    cmd.base.cancel = NULL;
+    cmd.async_parse = async_parse;
+    cmd.result = result;
+    aeron_driver_native_resource_agent_proxy_init_result(result);
+
+    aeron_driver_native_resource_agent_proxy_offer(
+        native_resource_agent_proxy,
+        (aeron_driver_native_resource_agent_proxy_cmd_t *)&cmd,
+        sizeof(aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t));
 }

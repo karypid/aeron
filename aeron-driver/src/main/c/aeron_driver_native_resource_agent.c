@@ -16,7 +16,7 @@
 
 #include "aeron_driver_native_resource_agent.h"
 #include "aeron_alloc.h"
-#include "aeron_driver_conductor.h"
+#include "command/aeron_control_protocol.h"
 #include "util/aeron_error.h"
 
 static void aeron_driver_native_resource_agent_delete_task(
@@ -159,14 +159,13 @@ void aeron_driver_native_resource_agent_on_re_resolve_address(
     aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
 {
     aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t *resolve_cmd =
-                (aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t *)cmd;
-    int rc = aeron_name_resolver_resolve_host_and_port(
+        (aeron_driver_native_resource_agent_proxy_cmd_resolve_address_t *)cmd;
+    if (aeron_name_resolver_resolve_host_and_port(
         native_resource_agent->name_resolver,
         resolve_cmd->address_resolution_params->endpoint_name,
         resolve_cmd->address_resolution_params->uri_param_name,
         resolve_cmd->address_resolution_params->is_re_resolution,
-        &resolve_cmd->address_resolution_params->resolved_address);
-    if (rc < 0)
+        &resolve_cmd->address_resolution_params->resolved_address) < 0)
     {
         AERON_APPEND_ERR("%s", "address re-resolution failed");
         aeron_driver_native_resource_agent_signal_error(native_resource_agent, resolve_cmd->result);
@@ -175,6 +174,22 @@ void aeron_driver_native_resource_agent_on_re_resolve_address(
     {
         // FIXME: Store resolved address in the success state instead of `aeron_name_resolver_async_resolve_t->resolved_address`
         AERON_SET_RELEASE(resolve_cmd->result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_SUCCEEDED);
+    }
+}
+
+void aeron_driver_native_resource_agent_on_parse_udp_channel(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t *channel_cmd =
+        (aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t *)cmd;
+    if (aeron_udp_channel_finish_parse(native_resource_agent->name_resolver, channel_cmd->async_parse) < 0)
+    {
+        AERON_APPEND_ERR("%s", "failed to parse channel");
+        aeron_driver_native_resource_agent_signal_error(native_resource_agent, channel_cmd->result);
+    }
+    else
+    {
+        AERON_SET_RELEASE(channel_cmd->result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_SUCCEEDED);
     }
 }
 
