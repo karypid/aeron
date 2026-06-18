@@ -23,17 +23,13 @@
 typedef struct aeron_driver_native_resource_agent_stct
 {
     aeron_driver_native_resource_agent_proxy_t native_resource_agent_proxy;
-    aeron_name_resolver_t *name_resolver;
+    aeron_name_resolver_t name_resolver;
     aeron_driver_context_t *context;
-    aeron_driver_conductor_t *conductor;
 }
 aeron_driver_native_resource_agent_t;
 
 int aeron_driver_native_resource_agent_init(
-    aeron_driver_native_resource_agent_t *native_resource_agent,
-    aeron_name_resolver_t *name_resolver,
-    aeron_driver_context_t *context,
-    aeron_driver_conductor_t *conductor);
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_context_t *context);
 
 int aeron_driver_native_resource_agent_do_work(void *clientd);
 

@@ -914,8 +914,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         goto error;
     }
 
-    if (aeron_driver_native_resource_agent_init(
-        &_driver->native_resource_agent, &_driver->conductor.name_resolver, context, &_driver->conductor) < 0)
+    if (aeron_driver_native_resource_agent_init(&_driver->native_resource_agent, context) < 0)
     {
         goto error;
     }

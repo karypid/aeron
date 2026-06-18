@@ -49,13 +49,6 @@ do                                                    \
     _d[_len] = '\0';                                  \
 } while (0)                                           \
 
-typedef struct aeron_time_tracking_name_resolver_stct
-{
-    aeron_name_resolver_t delegate_resolver;
-    aeron_driver_context_t *context;
-}
-aeron_time_tracking_name_resolver_t;
-
 const char * const AERON_DRIVER_CONDUCTOR_INVALID_DESTINATION_KEYS[] =
 {
     AERON_URI_MTU_LENGTH_KEY,
@@ -715,97 +708,6 @@ static int aeron_driver_conductor_validate_experimental_features(
     return 0;
 }
 
-static int aeron_time_tracking_name_resolver_resolve(
-    aeron_name_resolver_t *resolver,
-    const char *name,
-    const char *uri_param_name,
-    bool is_re_resolution,
-    struct sockaddr_storage *address)
-{
-    aeron_time_tracking_name_resolver_t *time_tracking_resolver = (aeron_time_tracking_name_resolver_t *)resolver->state;
-    aeron_driver_context_t *context = time_tracking_resolver->context;
-    int64_t begin_ns = context->nano_clock();
-    aeron_duty_cycle_tracker_t *tracker = context->name_resolver_time_tracker;
-    tracker->update(tracker->state, begin_ns);
-
-    int result = time_tracking_resolver->delegate_resolver.resolve_func(
-        &time_tracking_resolver->delegate_resolver,
-        name,
-        uri_param_name,
-        is_re_resolution,
-        address);
-
-    int64_t end_ns = context->nano_clock();
-    tracker->measure_and_update(tracker->state, end_ns);
-
-    if (NULL != context->log.on_name_resolve)
-    {
-        struct sockaddr_storage *resolved_address = 0 <= result ? address : NULL;
-        context->log.on_name_resolve(
-            &time_tracking_resolver->delegate_resolver, end_ns - begin_ns, name, is_re_resolution, resolved_address);
-    }
-
-    return result;
-}
-
-static int aeron_time_tracking_name_resolver_lookup(
-    aeron_name_resolver_t *resolver,
-    const char *name,
-    const char *uri_param_name,
-    bool is_re_lookup,
-    const char **resolved_name)
-{
-    aeron_time_tracking_name_resolver_t *time_tracking_resolver = (aeron_time_tracking_name_resolver_t *)resolver->state;
-    aeron_driver_context_t *context = time_tracking_resolver->context;
-    int64_t begin_ns = context->nano_clock();
-    aeron_duty_cycle_tracker_t *tracker = context->name_resolver_time_tracker;
-    tracker->update(tracker->state, begin_ns);
-
-    int result = time_tracking_resolver->delegate_resolver.lookup_func(
-        &time_tracking_resolver->delegate_resolver,
-        name,
-        uri_param_name,
-        is_re_lookup,
-        resolved_name);
-
-    int64_t end_ns = context->nano_clock();
-    tracker->measure_and_update(tracker->state, end_ns);
-
-    if (NULL != context->log.on_name_lookup)
-    {
-        const char *result_name = 0 <= result ? *resolved_name : NULL;
-        context->log.on_name_lookup(
-            &time_tracking_resolver->delegate_resolver, end_ns - begin_ns, name, is_re_lookup, result_name);
-    }
-
-    return result;
-}
-
-static int aeron_time_tracking_name_resolver_start(aeron_name_resolver_t *resolver)
-{
-    aeron_time_tracking_name_resolver_t *time_tracking_resolver = (aeron_time_tracking_name_resolver_t *)resolver->state;
-    int result = time_tracking_resolver->delegate_resolver.start_func(&time_tracking_resolver->delegate_resolver);
-    if (result < 0)
-    {
-        AERON_APPEND_ERR("%s", "");
-    }
-    return result;
-}
-
-static int aeron_time_tracking_name_resolver_do_work(aeron_name_resolver_t *resolver, int64_t now_ms)
-{
-    aeron_time_tracking_name_resolver_t *time_tracking_resolver = (aeron_time_tracking_name_resolver_t *)resolver->state;
-    return time_tracking_resolver->delegate_resolver.do_work_func(&time_tracking_resolver->delegate_resolver, now_ms);
-}
-
-static int aeron_time_tracking_name_resolver_close(aeron_name_resolver_t *resolver)
-{
-    aeron_time_tracking_name_resolver_t *time_tracking_resolver = (aeron_time_tracking_name_resolver_t *)resolver->state;
-    time_tracking_resolver->delegate_resolver.close_func(&time_tracking_resolver->delegate_resolver);
-    aeron_free(time_tracking_resolver);
-    return 0;
-}
-
 static bool aeron_driver_conductor_treat_image_as_multicast(
     aeron_udp_channel_t *channel, uint8_t flags, aeron_inferable_boolean_t is_group)
 {
@@ -991,32 +893,6 @@ int aeron_driver_conductor_init(aeron_driver_conductor_t *conductor, aeron_drive
         &conductor->counters_manager, AERON_SYSTEM_COUNTER_NAME_RESOLVER_MAX_TIME);
     context->name_resolver_time_stall_tracker.cycle_time_threshold_exceeded_counter = aeron_counters_manager_addr(
         &conductor->counters_manager, AERON_SYSTEM_COUNTER_NAME_RESOLVER_TIME_THRESHOLD_EXCEEDED);
-
-    aeron_time_tracking_name_resolver_t *time_tracking_name_resolver = NULL;
-    if (aeron_alloc((void **)&time_tracking_name_resolver, sizeof(aeron_time_tracking_name_resolver_t)) < 0)
-    {
-        AERON_APPEND_ERR("%s", "Failed to allocate aeron_time_tracking_name_resolver_t");
-        goto error;
-    }
-    time_tracking_name_resolver->context = context;
-
-    if (aeron_name_resolver_init(
-        &time_tracking_name_resolver->delegate_resolver,
-        context->name_resolver_init_args,
-        context) < 0)
-    {
-        AERON_APPEND_ERR("%s", "failed to init name resolver");
-        aeron_free(time_tracking_name_resolver);
-        goto error;
-    }
-
-    conductor->name_resolver.name = "time_tracking_name_resolver";
-    conductor->name_resolver.resolve_func = aeron_time_tracking_name_resolver_resolve;
-    conductor->name_resolver.lookup_func = aeron_time_tracking_name_resolver_lookup;
-    conductor->name_resolver.start_func = aeron_time_tracking_name_resolver_start;
-    conductor->name_resolver.do_work_func = aeron_time_tracking_name_resolver_do_work;
-    conductor->name_resolver.close_func = aeron_time_tracking_name_resolver_close;
-    conductor->name_resolver.state = time_tracking_name_resolver;
 
     char label[AERON_COUNTER_MAX_LABEL_LENGTH];
     const char *driver_name = NULL == context->resolver_name ? "" : context->resolver_name;

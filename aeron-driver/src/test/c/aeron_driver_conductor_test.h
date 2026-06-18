@@ -278,8 +278,7 @@ struct TestDriverConductor
 
         context.m_context->receiver_proxy = &m_receiver.receiver_proxy;
 
-        if (aeron_driver_native_resource_agent_init(
-            &m_native_resource_agent, &m_conductor.name_resolver, context.m_context, &m_conductor) < 0)
+        if (aeron_driver_native_resource_agent_init(&m_native_resource_agent, context.m_context) < 0)
         {
             throw std::runtime_error("could not init native_resource_agent: " + std::string(aeron_errmsg()));
         }
