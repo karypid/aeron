@@ -333,7 +333,10 @@ public final class DriverConductor implements Agent
     void onReResolveEndpoint(
         final String endpoint, final SendChannelEndpoint channelEndpoint, final InetSocketAddress address)
     {
-        scheduleDriverCommand(new ReResolveEndpointAddress(endpoint, channelEndpoint, address));
+        if (ChannelEndpointStatus.ACTIVE == channelEndpoint.status())
+        {
+            scheduleDriverCommand(new ReResolveEndpointAddress(endpoint, channelEndpoint, address));
+        }
     }
 
     void onReResolveControl(
@@ -342,7 +345,10 @@ public final class DriverConductor implements Agent
         final ReceiveChannelEndpoint channelEndpoint,
         final InetSocketAddress address)
     {
-        scheduleDriverCommand(new ReResolveControlAddress(control, udpChannel, channelEndpoint, address));
+        if (ChannelEndpointStatus.ACTIVE == channelEndpoint.status())
+        {
+            scheduleDriverCommand(new ReResolveControlAddress(control, udpChannel, channelEndpoint, address));
+        }
     }
 
     IpcPublication findSharedIpcPublication(final long streamId, final long responseCorrelationId)
@@ -3529,9 +3535,13 @@ public final class DriverConductor implements Agent
                 {
                     throw new AeronEvent("could not re-resolve: " + MDC_CONTROL_PARAM_NAME + "=" + control);
                 }
-                else if (!Objects.equals(address, newAddress))
+
+                if (ChannelEndpointStatus.ACTIVE == channelEndpoint.status())
                 {
-                    receiverProxy.onResolutionChange(channelEndpoint, udpChannel, newAddress);
+                    if (!Objects.equals(address, newAddress))
+                    {
+                        receiverProxy.onResolutionChange(channelEndpoint, udpChannel, newAddress);
+                    }
                 }
                 return true;
             }
@@ -3564,9 +3574,13 @@ public final class DriverConductor implements Agent
                 {
                     throw new AeronEvent("could not re-resolve: " + ENDPOINT_PARAM_NAME + "=" + endpoint);
                 }
-                else if (!Objects.equals(address, newAddress))
+
+                if (ChannelEndpointStatus.ACTIVE == channelEndpoint.status())
                 {
-                    senderProxy.onResolutionChange(channelEndpoint, endpoint, newAddress);
+                    if (!Objects.equals(address, newAddress))
+                    {
+                        senderProxy.onResolutionChange(channelEndpoint, endpoint, newAddress);
+                    }
                 }
                 return true;
             }

@@ -24,6 +24,7 @@ import io.aeron.driver.buffer.TestLogFactory;
 import io.aeron.driver.exceptions.InvalidChannelException;
 import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.ReceiveChannelEndpointThreadLocals;
+import io.aeron.driver.media.SendChannelEndpoint;
 import io.aeron.driver.media.UdpChannel;
 import io.aeron.driver.media.WildcardPortManager;
 import io.aeron.driver.status.DutyCycleStallTracker;
@@ -90,6 +91,10 @@ import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
 import static io.aeron.logbuffer.FrameDescriptor.frameLengthOrdered;
 import static io.aeron.protocol.DataHeaderFlyweight.HEADER_LENGTH;
 import static io.aeron.protocol.DataHeaderFlyweight.createDefaultHeader;
+import static io.aeron.status.ChannelEndpointStatus.ACTIVE;
+import static io.aeron.status.ChannelEndpointStatus.CLOSING;
+import static io.aeron.status.ChannelEndpointStatus.ERRORED;
+import static io.aeron.status.ChannelEndpointStatus.INITIALIZING;
 import static io.aeron.status.HeartbeatTimestamp.HEARTBEAT_TYPE_ID;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -165,7 +170,6 @@ class DriverConductorTest
 
     private final SenderProxy senderProxy = mock(SenderProxy.class);
     private final ReceiverProxy receiverProxy = mock(ReceiverProxy.class);
-    private final NameResolverAgent nameResolver = DefaultNameResolver.INSTANCE;
     private NativeResourceAgentProxy nativeResourceAgentProxy;
     private DriverConductorProxy driverConductorProxy;
     private ReceiveChannelEndpoint receiveChannelEndpoint = null;
@@ -2016,6 +2020,113 @@ class DriverConductorTest
         final InOrder inOrder = inOrder(toDriverCommands, cncByteBuffer);
         inOrder.verify(toDriverCommands).consumerHeartbeatTime(Aeron.NULL_VALUE);
         inOrder.verify(cncByteBuffer).force();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, CLOSING })
+    void shouldSkipControlAddressReResolutionIfReceiveChannelEndpointIsNotActive(final long endpointStatus)
+    {
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(endpointStatus);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+
+        driverConductor.onReResolveControl("$^#&*^$*$#^", udpChannel, endpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(mockErrorHandler, never()).onError(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, CLOSING })
+    void shouldNotNotifyReceiverOfControlAddressChangesIfReceiveChannelEndpointIsNotActiveWhenComplete(
+        final long finalEndpointStatus)
+    {
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(ACTIVE, finalEndpointStatus);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+
+        driverConductor.onReResolveControl("127.0.0.1:5050", udpChannel, endpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(endpoint, times(2)).status();
+        verify(mockErrorHandler, never()).onError(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, ACTIVE, CLOSING })
+    void shouldLogControlAddressReResolutionErrorAlways(final long finalEndpointStatus)
+    {
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(ACTIVE, finalEndpointStatus);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+        final String control = "$#^%*#(";
+
+        driverConductor.onReResolveControl(control, udpChannel, endpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(endpoint).status();
+        verify(mockErrorHandler).onError(argThat(error -> error.getMessage().contains(control)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, CLOSING })
+    void shouldSkipEndpointAddressReResolutionIfSendChannelEndpointIsNotActive(final long endpointStatus)
+    {
+        final SendChannelEndpoint channelEndpoint = mock(SendChannelEndpoint.class);
+        when(channelEndpoint.status()).thenReturn(endpointStatus);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+
+        driverConductor.onReResolveEndpoint("$^#&*^$*$#^", channelEndpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(mockErrorHandler, never()).onError(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, CLOSING })
+    void shouldNotNotifyReceiverOfEndpointAddressChangesIfSendChannelEndpointIsNotActiveWhenComplete(
+        final long finalEndpointStatus)
+    {
+        final SendChannelEndpoint channelEndpoint = mock(SendChannelEndpoint.class);
+        when(channelEndpoint.status()).thenReturn(ACTIVE, finalEndpointStatus);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+
+        driverConductor.onReResolveEndpoint("127.0.0.1:5050", channelEndpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(channelEndpoint, times(2)).status();
+        verify(mockErrorHandler, never()).onError(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { ERRORED, INITIALIZING, ACTIVE, CLOSING })
+    void shouldLogEndpointAddressReResolutionErrorAlways(final long finalEndpointStatus)
+    {
+        final SendChannelEndpoint channelEndpoint = mock(SendChannelEndpoint.class);
+        when(channelEndpoint.status()).thenReturn(ACTIVE, finalEndpointStatus);
+        final InetSocketAddress address = InetSocketAddress.createUnresolved("some", 5555);
+        final String endpoint = "$#^%*#(";
+
+        driverConductor.onReResolveEndpoint(endpoint, channelEndpoint, address);
+
+        doWork();
+        doWork();
+
+        verify(channelEndpoint).status();
+        verify(mockErrorHandler).onError(argThat(error -> error.getMessage().contains(endpoint)));
     }
 
     private void doWorkUntil(final BooleanSupplier condition, final LongConsumer timeConsumer)
