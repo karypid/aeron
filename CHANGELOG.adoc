@@ -772,6 +772,9 @@ bound to reduce the chance of the returning publication not being connected and 
 * **[C]** Upgrade to `CMake` 4.1.2.
 * **[C]** Upgrade to `HDR Histogram` 0.11.9.
 
+== 1.48.11 (2026-06-18)
+* **[Driver]** Do not re-resolve control/endpoint addresses if the corresponding endpoint is not active (i.e. closing).
+
 == 1.48.10 (2025-11-21)
 
 * **[C]** Add `aeron_is_frame_valid` method.
