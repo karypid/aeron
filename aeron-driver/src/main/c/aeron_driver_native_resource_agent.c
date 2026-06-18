@@ -112,7 +112,7 @@ int aeron_driver_native_resource_agent_init(
     native_resource_agent->native_resource_agent_proxy.native_resource_agent = native_resource_agent;
     native_resource_agent->native_resource_agent_proxy.command_queue = &context->native_resource_agent_command_queue;
     native_resource_agent->native_resource_agent_proxy.fail_counter =
-        aeron_system_counter_addr(context->system_counters, AERON_SYSTEM_COUNTER_SENDER_PROXY_FAILS);
+        aeron_system_counter_addr(context->system_counters, AERON_SYSTEM_COUNTER_NATIVE_RESOURCE_AGENT_PROXY_FAILS);
 
     return 0;
 }

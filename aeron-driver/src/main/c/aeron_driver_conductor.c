@@ -6426,16 +6426,20 @@ int aeron_driver_conductor_execute_re_resolve_endpoint(
         return -1;
     }
 
-    if (0 != memcmp(
-        &async_cmd->async_resolve.resolved_address,
-        &async_cmd->existing_addr,
-        sizeof(struct sockaddr_storage)))
+    aeron_send_channel_endpoint_t *endpoint = async_cmd->endpoint;
+    if (AERON_SEND_CHANNEL_ENDPOINT_STATUS_ACTIVE == endpoint->conductor_fields.status)
     {
-        aeron_driver_sender_proxy_on_resolution_change(
-            conductor->context->sender_proxy,
-            async_cmd->async_resolve.endpoint_name,
-            async_cmd->endpoint,
-            &async_cmd->async_resolve.resolved_address);
+        if (0 != memcmp(
+            &async_cmd->async_resolve.resolved_address,
+            &async_cmd->existing_addr,
+            sizeof(struct sockaddr_storage)))
+        {
+            aeron_driver_sender_proxy_on_resolution_change(
+                conductor->context->sender_proxy,
+                async_cmd->async_resolve.endpoint_name,
+                endpoint,
+                &async_cmd->async_resolve.resolved_address);
+        }
     }
 
     return 1;
@@ -6445,9 +6449,8 @@ void aeron_driver_conductor_on_re_resolve_endpoint(void *clientd, void *item)
 {
     aeron_driver_conductor_t *conductor = clientd;
     aeron_command_re_resolve_t *cmd = item;
-    aeron_send_channel_endpoint_t *endpoint = cmd->endpoint;
 
-    // FIXME: why?
+    aeron_send_channel_endpoint_t *endpoint = cmd->endpoint;
     if (AERON_SEND_CHANNEL_ENDPOINT_STATUS_ACTIVE != endpoint->conductor_fields.status)
     {
         return;
@@ -6495,17 +6498,21 @@ int aeron_driver_conductor_execute_re_resolve_control(
         return -1;
     }
 
-    if (0 != memcmp(
-        &async_cmd->async_resolve.resolved_address,
-        &async_cmd->existing_addr,
-        sizeof(struct sockaddr_storage)))
+    aeron_receive_channel_endpoint_t *endpoint = async_cmd->endpoint;
+    if (AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_ACTIVE == endpoint->conductor_fields.status)
     {
-        aeron_driver_receiver_proxy_on_resolution_change(
-            conductor->context->receiver_proxy,
-            async_cmd->async_resolve.endpoint_name,
-            async_cmd->endpoint,
-            async_cmd->destination,
-            &async_cmd->async_resolve.resolved_address);
+        if (0 != memcmp(
+            &async_cmd->async_resolve.resolved_address,
+            &async_cmd->existing_addr,
+            sizeof(struct sockaddr_storage)))
+        {
+            aeron_driver_receiver_proxy_on_resolution_change(
+                conductor->context->receiver_proxy,
+                async_cmd->async_resolve.endpoint_name,
+                endpoint,
+                async_cmd->destination,
+                &async_cmd->async_resolve.resolved_address);
+        }
     }
 
     return 1;
@@ -6515,8 +6522,12 @@ void aeron_driver_conductor_on_re_resolve_control(void *clientd, void *item)
 {
     aeron_driver_conductor_t *conductor = clientd;
     aeron_command_re_resolve_t *cmd = item;
-    struct sockaddr_storage resolved_addr;
-    memset(&resolved_addr, 0, sizeof(resolved_addr));
+
+    aeron_receive_channel_endpoint_t *endpoint = cmd->endpoint;
+    if (AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_ACTIVE != endpoint->conductor_fields.status)
+    {
+        return;
+    }
 
     aeron_async_re_resolve_t *async_cmd;
     if (aeron_alloc((void **)&async_cmd, sizeof(aeron_async_re_resolve_t)) < 0)

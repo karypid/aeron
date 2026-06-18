@@ -781,3 +781,155 @@ TEST_F(DriverConductorNetworkTest, shouldFailToAddSubscriptionWithAtsEnabled)
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(AERON_RESPONSE_ON_ERROR, _, _));
     EXPECT_EQ(1, readAllBroadcastsFromConductor(mock_broadcast_handler));
 }
+
+TEST_F(DriverConductorNetworkTest, shouldSkipControlAddressReResolutionIfEndpointIsNotActive)
+{
+    aeron_receive_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_CLOSING;
+    m_conductor.m_conductor.context->receiver_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "#@#%@&^%#@$*%*@$ this won't resolve #%$*&$@%^";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_control(&m_conductor.m_conductor, &cmd);
+
+    doWork();
+    doWork();
+
+    // error counter zero means that the command was not executed
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+}
+
+TEST_F(DriverConductorNetworkTest, shouldNotNotifyControlAddressReResolutionResultsIfEndpointIsNotActiveWhenTaskCompletes)
+{
+    aeron_receive_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_ACTIVE;
+    m_conductor.m_conductor.context->receiver_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "127.0.0.1:10101";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_control(&m_conductor.m_conductor, &cmd);
+    endpoint.conductor_fields.status = AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_CLOSED;
+
+    doWork();
+    doWork();
+
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+}
+
+TEST_F(DriverConductorNetworkTest, shouldReportControlAddressReResolutionErrorEvenIfEndpointIsNotActiveWhenTaskCompletes)
+{
+    aeron_receive_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_ACTIVE;
+    m_conductor.m_conductor.context->receiver_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "*#&(%#%&";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_control(&m_conductor.m_conductor, &cmd);
+    endpoint.conductor_fields.status = AERON_RECEIVE_CHANNEL_ENDPOINT_STATUS_CLOSING;
+
+    doWork();
+    doWork();
+
+    EXPECT_EQ(1, aeron_counter_get_acquire(driverErrorCounter));
+    EXPECT_EQ(0, aeron_errcode());
+}
+
+TEST_F(DriverConductorNetworkTest, shouldSkipEndpointAddressReResolutionIfEndpointIsNotActive)
+{
+    aeron_send_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_SEND_CHANNEL_ENDPOINT_STATUS_CLOSED;
+    m_conductor.m_conductor.context->sender_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "#@#%@&^%#@$*%*@$ this won't resolve #%$*&$@%^";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_endpoint(&m_conductor.m_conductor, &cmd);
+
+    doWork();
+    doWork();
+
+    // error counter zero means that the command was not executed
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+}
+
+TEST_F(DriverConductorNetworkTest, shouldNotNotifyEndpointAddressReResolutionResultsIfEndpointIsNotActiveWhenTaskCompletes)
+{
+    aeron_send_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_SEND_CHANNEL_ENDPOINT_STATUS_ACTIVE;
+    m_conductor.m_conductor.context->sender_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "127.0.0.1:10101";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_endpoint(&m_conductor.m_conductor, &cmd);
+    endpoint.conductor_fields.status = AERON_SEND_CHANNEL_ENDPOINT_STATUS_CLOSING;
+
+    doWork();
+    doWork();
+
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+}
+
+TEST_F(DriverConductorNetworkTest, shouldReportEndpointAddressReResolutionErrorEvenIfEndpointIsNotActiveWhenTaskCompletes)
+{
+    aeron_send_channel_endpoint_t endpoint;
+    endpoint.conductor_fields.status = AERON_SEND_CHANNEL_ENDPOINT_STATUS_ACTIVE;
+    m_conductor.m_conductor.context->sender_proxy = nullptr;
+
+    aeron_command_re_resolve_t cmd;
+    cmd.endpoint_name = "*#&(%#%&";
+    cmd.endpoint = &endpoint;
+    cmd.destination = nullptr;
+    memset(&cmd.existing_addr, 0, sizeof(cmd.existing_addr));
+
+    auto driverErrorCounter =
+        aeron_counters_manager_addr(&m_context.m_counters_manager, AERON_SYSTEM_COUNTER_ID_ERRORS);
+    EXPECT_EQ(0, aeron_counter_get_acquire(driverErrorCounter));
+
+    aeron_driver_conductor_on_re_resolve_endpoint(&m_conductor.m_conductor, &cmd);
+    endpoint.conductor_fields.status = AERON_SEND_CHANNEL_ENDPOINT_STATUS_CLOSED;
+
+    doWork();
+    doWork();
+
+    EXPECT_EQ(1, aeron_counter_get_acquire(driverErrorCounter));
+    EXPECT_EQ(0, aeron_errcode());
+}
