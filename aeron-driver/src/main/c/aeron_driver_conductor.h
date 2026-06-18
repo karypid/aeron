@@ -158,15 +158,6 @@ typedef struct aeron_linger_resource_entry_stct
 }
 aeron_linger_resource_entry_t;
 
-typedef bool (*aeron_end_of_life_resource_free_t)(void *resource);
-
-struct aeron_end_of_life_resource_stct
-{
-    void *resource;
-    aeron_end_of_life_resource_free_t free_func;
-};
-typedef struct aeron_end_of_life_resource_stct aeron_end_of_life_resource_t;
-
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
 typedef struct aeron_driver_conductor_driver_command_stct
@@ -305,8 +296,6 @@ typedef struct aeron_driver_conductor_stct
         void (*free_func)(aeron_driver_conductor_t *, aeron_linger_resource_entry_t *);
     }
     lingering_resources;
-
-    aeron_deque_t end_of_life_queue;
 
     int64_t *errors_counter;
     int64_t *images_rejected_counter;

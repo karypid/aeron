@@ -59,6 +59,15 @@
 #define AERON_COUNTERS_VALUES_BUFFER_LENGTH_MAX UINT32_C(500 * 1024 * 1024)
 #define AERON_ERROR_BUFFER_LENGTH_DEFAULT (4 * 1024 * 1024)
 
+typedef bool (*aeron_end_of_life_resource_free_t)(void *resource);
+
+typedef struct aeron_end_of_life_resource_stct
+{
+    void *resource;
+    aeron_end_of_life_resource_free_t free_func;
+}
+aeron_end_of_life_resource_t;
+
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
 typedef struct aeron_driver_conductor_proxy_stct aeron_driver_conductor_proxy_t;

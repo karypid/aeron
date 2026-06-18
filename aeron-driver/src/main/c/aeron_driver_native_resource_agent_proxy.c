@@ -71,3 +71,18 @@ void aeron_driver_native_resource_agent_proxy_parse_udp_channel(
         (aeron_driver_native_resource_agent_proxy_cmd_t *)&cmd,
         sizeof(aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t));
 }
+
+void aeron_driver_native_resource_agent_proxy_free_resource(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_end_of_life_resource_t *resource)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_free_resource_t cmd;
+    cmd.base.execute = aeron_driver_native_resource_agent_on_free_resource;
+    cmd.resource.free_func = resource->free_func;
+    cmd.resource.resource = resource->resource;
+
+    aeron_driver_native_resource_agent_proxy_offer(
+        native_resource_agent_proxy,
+        (aeron_driver_native_resource_agent_proxy_cmd_t *)&cmd,
+    sizeof(aeron_driver_native_resource_agent_proxy_cmd_free_resource_t));
+}

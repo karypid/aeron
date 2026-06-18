@@ -153,6 +153,31 @@ static void aeron_driver_native_resource_agent_on_command(
     cmd->execute(native_resource_agent, cmd);
 }
 
+static int aeron_driver_native_resource_agent_free_end_of_life_resources(
+    aeron_driver_native_resource_agent_t *native_resource_agent)
+{
+    const uint32_t limit = native_resource_agent->context->resource_free_limit;
+    aeron_end_of_life_resource_t end_of_life_resource = { 0 };
+    uint32_t count = 0;
+
+    for (; count < limit; count++)
+    {
+        if (0 == aeron_deque_remove_first(&native_resource_agent->end_of_life_queue, (void *)&end_of_life_resource))
+        {
+            break;
+        }
+
+        if (!end_of_life_resource.free_func(end_of_life_resource.resource))
+        {
+            int64_t *counter = aeron_system_counter_addr(native_resource_agent->context->system_counters, AERON_SYSTEM_COUNTER_FREE_FAILS);
+            aeron_counter_increment_release(counter);
+            aeron_deque_add_last(&native_resource_agent->end_of_life_queue, (void *)&end_of_life_resource);
+        }
+    }
+
+    return (int)count;
+}
+
 void aeron_driver_native_resource_agent_on_start(void *state, const char *role_name)
 {
     aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)state;
@@ -179,9 +204,9 @@ void aeron_driver_native_resource_agent_on_start(void *state, const char *role_n
 
 int aeron_driver_native_resource_agent_do_work(void *clientd)
 {
-    aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
-
     int work_count = 0;
+
+    aeron_driver_native_resource_agent_t *native_resource_agent = clientd;
 
     const int64_t now = native_resource_agent->context->epoch_clock();
     work_count += native_resource_agent->name_resolver.do_work_func(&native_resource_agent->name_resolver, now);
@@ -192,12 +217,20 @@ int aeron_driver_native_resource_agent_do_work(void *clientd)
         native_resource_agent,
     AERON_COMMAND_DRAIN_LIMIT);
 
+    work_count += aeron_driver_native_resource_agent_free_end_of_life_resources(native_resource_agent);
+
     return work_count;
 }
 
 int aeron_driver_native_resource_agent_init(
     aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_context_t *context)
 {
+    if (aeron_deque_init(&native_resource_agent->end_of_life_queue, 1024, sizeof(aeron_end_of_life_resource_t)))
+    {
+        AERON_APPEND_ERR("%s", "");
+        return -1;
+    }
+
     aeron_time_tracking_name_resolver_t *time_tracking_name_resolver = NULL;
     if (aeron_alloc((void **)&time_tracking_name_resolver, sizeof(aeron_time_tracking_name_resolver_t)) < 0)
     {
@@ -238,6 +271,13 @@ void aeron_driver_native_resource_agent_on_close(void *clientd)
 {
     aeron_driver_native_resource_agent_t *native_resource_agent = (aeron_driver_native_resource_agent_t *)clientd;
     native_resource_agent->name_resolver.close_func(&native_resource_agent->name_resolver);
+
+    aeron_end_of_life_resource_t end_of_life_resource;
+    while (0 != aeron_deque_remove_first(&native_resource_agent->end_of_life_queue, &end_of_life_resource))
+    {
+        end_of_life_resource.free_func(end_of_life_resource.resource);
+    }
+    aeron_deque_close(&native_resource_agent->end_of_life_queue);
 }
 
 void aeron_driver_native_resource_agent_on_resolve_address(
@@ -275,5 +315,21 @@ void aeron_driver_native_resource_agent_on_parse_udp_channel(
     else
     {
         AERON_SET_RELEASE(channel_cmd->result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_SUCCEEDED);
+    }
+}
+
+void aeron_driver_native_resource_agent_on_free_resource(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd)
+{
+    aeron_driver_native_resource_agent_proxy_cmd_free_resource_t *free_cmd =
+        (aeron_driver_native_resource_agent_proxy_cmd_free_resource_t *)cmd;
+
+    if (aeron_deque_add_last(&native_resource_agent->end_of_life_queue, &free_cmd->resource) < 0)
+    {
+        AERON_APPEND_ERR("%s", "failed to append EOL resource");
+        aeron_distinct_error_log_record(
+            native_resource_agent->context->error_log,
+            aeron_errcode(),
+            aeron_errmsg());
     }
 }

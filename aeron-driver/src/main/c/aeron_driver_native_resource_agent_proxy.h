@@ -79,6 +79,13 @@ typedef struct aeron_driver_native_resource_agent_proxy_cmd_parse_channel_stct
 }
 aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t;
 
+typedef struct aeron_driver_native_resource_agent_proxy_cmd_free_resource_stct
+{
+    aeron_driver_native_resource_agent_proxy_cmd_t base;
+    aeron_end_of_life_resource_t resource;
+}
+aeron_driver_native_resource_agent_proxy_cmd_free_resource_t;
+
 void aeron_driver_native_resource_agent_proxy_resolve_address(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_name_resolver_async_resolve_t *address_resolution_params,
@@ -88,5 +95,9 @@ void aeron_driver_native_resource_agent_proxy_parse_udp_channel(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
     aeron_udp_channel_async_parse_t *async_parse,
     aeron_driver_native_resource_agent_command_result_t *result);
+
+void aeron_driver_native_resource_agent_proxy_free_resource(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    aeron_end_of_life_resource_t *resource);
 
 #endif //AERON_DRIVER_NATIVE_RESOURCE_AGENT_PROXY_H
