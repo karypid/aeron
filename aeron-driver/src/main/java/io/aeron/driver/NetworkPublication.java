@@ -788,14 +788,20 @@ public final class NetworkPublication
             if (hasSubscribers())
             {
                 long minConsumerPosition = senderPosition;
-                long maxConsumerPosition = senderPosition;
-                for (final ReadablePosition spyPosition : spyPositions)
+                if (spyPositions.length > 0)
                 {
-                    final long position = spyPosition.getAcquire();
-                    minConsumerPosition = Math.min(minConsumerPosition, position);
-                    maxConsumerPosition = Math.max(maxConsumerPosition, position);
+                    long maxConsumerPosition = senderPosition;
+                    for (final ReadablePosition spyPosition : spyPositions)
+                    {
+                        final long position = spyPosition.getAcquire();
+                        minConsumerPosition = Math.min(minConsumerPosition, position);
+                        maxConsumerPosition = Math.max(maxConsumerPosition, position);
+                    }
+                    if (maxConsumerPosition > (long)MAX_SPY_POSITION_MH.get(this))
+                    {
+                        MAX_SPY_POSITION_MH.setRelease(this, maxConsumerPosition);
+                    }
                 }
-                MAX_SPY_POSITION_MH.setRelease(this, maxConsumerPosition);
 
                 final long newLimitPosition = minConsumerPosition + termWindowLength;
                 if (newLimitPosition > publisherLimit.get())
