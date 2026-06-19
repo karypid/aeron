@@ -2063,6 +2063,8 @@ public final class DriverConductor implements Agent
 
             if (resource.hasReachedEndOfLife())
             {
+                fastUnorderedRemove(list, i, lastIndex--);
+
                 try
                 {
                     resource.close();
@@ -2084,8 +2086,6 @@ public final class DriverConductor implements Agent
                 {
                     nativeResourceAgentProxy.freeLogBuffer(publicationImage.rawLog());
                 }
-
-                fastUnorderedRemove(list, i, lastIndex--);
             }
         }
     }
