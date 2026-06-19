@@ -65,6 +65,8 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[Driver/C]** Fix `session-id` checks for network publications.
 * **[Driver/C]** Remove `aeron_spsc_rb_writev` and restore compilation on Windows.
 * **[Driver]** Do not re-resolve control/endpoint addresses if the corresponding endpoint is not active (i.e. closing).
+* **[Driver]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing spies
+mutated the array that the sender thread was iterating over.
 * **[Java]** Upgrade to `Gradle` 9.5.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
