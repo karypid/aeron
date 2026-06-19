@@ -2859,6 +2859,11 @@ TEST_P(AeronCArchiveParamTest, shouldRecordReplicateThenStop)
     if (tryStop)
     {
         bool stopped;
+
+        const int64_t unknown_replication_id = replication_id + 40000;
+        ASSERT_EQ_ERR(0, aeron_archive_try_stop_replication(&stopped, m_dest_archive, unknown_replication_id));
+        ASSERT_FALSE(stopped);
+
         ASSERT_EQ_ERR(0, aeron_archive_try_stop_replication(&stopped, m_dest_archive, replication_id));
         ASSERT_TRUE(stopped);
     }

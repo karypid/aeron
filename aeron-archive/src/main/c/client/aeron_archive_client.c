@@ -1817,7 +1817,7 @@ int aeron_archive_try_stop_replication(
             aeron_archive,
             "AeronArchive::tryStopReplication",
             correlation_id,
-            ARCHIVE_ERROR_CODE_UNKNOWN_SUBSCRIPTION);
+            ARCHIVE_ERROR_CODE_UNKNOWN_REPLICATION);
     }
 
     aeron_mutex_unlock(&aeron_archive->lock);
