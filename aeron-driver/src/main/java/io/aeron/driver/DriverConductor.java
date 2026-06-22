@@ -2511,7 +2511,7 @@ public final class DriverConductor implements Agent
                 if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
                 {
                     clientProxy.onError(
-                        clientId,
+                        correlationId,
                         RESOURCE_TEMPORARILY_UNAVAILABLE,
                         "SendChannelEndpoint found in CLOSING state, please retry");
                     state = State.DONE;
@@ -2596,7 +2596,7 @@ public final class DriverConductor implements Agent
             if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
             {
                 clientProxy.onError(
-                    clientId,
+                    correlationId,
                     RESOURCE_TEMPORARILY_UNAVAILABLE,
                     "SendChannelEndpoint found in CLOSING state, please retry");
                 state = State.DONE;
