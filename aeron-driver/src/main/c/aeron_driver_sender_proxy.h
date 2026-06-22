@@ -19,6 +19,7 @@
 
 #include "aeron_driver_context.h"
 #include "concurrent/aeron_spsc_rb.h"
+#include "util/aeron_parse_util.h"
 
 typedef struct aeron_driver_sender_stct aeron_driver_sender_t;
 typedef struct aeron_send_channel_endpoint_stct aeron_send_channel_endpoint_t;
@@ -77,7 +78,7 @@ aeron_command_destination_by_id_t;
 typedef struct aeron_command_sender_resolution_change_stct
 {
     aeron_command_base_t base;
-    const char *endpoint_name;
+    char endpoint_name[AERON_MAX_HOST_LENGTH + 1];
     void *endpoint;
     struct sockaddr_storage new_addr;
 }

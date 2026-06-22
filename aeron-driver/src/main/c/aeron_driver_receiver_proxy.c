@@ -17,21 +17,13 @@
 #include "concurrent/aeron_counters_manager.h"
 #include "aeron_driver_receiver_proxy.h"
 #include "aeron_driver_receiver.h"
-#include "aeron_alloc.h"
 
 void aeron_driver_receiver_proxy_offer(aeron_driver_receiver_proxy_t *receiver_proxy, void *cmd, size_t length)
 {
-    aeron_rb_write_result_t result;
-    while (AERON_RB_FULL == (result = aeron_spsc_rb_write(receiver_proxy->command_queue, 1, cmd, length)))
+    while (AERON_RB_SUCCESS != aeron_spsc_rb_write(receiver_proxy->command_queue, 1, cmd, length))
     {
         aeron_counter_increment_release(receiver_proxy->fail_counter);
         sched_yield();
-    }
-
-    if (AERON_RB_ERROR == result)
-    {
-        aeron_distinct_error_log_record(
-            receiver_proxy->receiver->error_log, EINVAL, "Error writing to receiver proxy ring buffer");
     }
 }
 
@@ -245,11 +237,14 @@ void aeron_driver_receiver_proxy_on_resolution_change(
     aeron_command_receiver_resolution_change_t cmd =
         {
             .base = { .func = aeron_driver_receiver_on_resolution_change, .item = NULL },
-            .endpoint_name = endpoint_name,
             .endpoint = endpoint,
             .destination = destination
         };
     memcpy(&cmd.new_addr, new_addr, sizeof(cmd.new_addr));
+
+    size_t endpoint_name_length = strlen(endpoint_name);
+    memcpy(&cmd.endpoint_name, endpoint_name, endpoint_name_length);
+    cmd.endpoint_name[endpoint_name_length] = '\0';
 
     aeron_driver_receiver_proxy_offer(receiver_proxy, &cmd, sizeof(cmd));
 }
