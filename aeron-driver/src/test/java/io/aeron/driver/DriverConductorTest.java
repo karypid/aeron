@@ -2261,7 +2261,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             destinationCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     @Test
@@ -2291,7 +2291,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             destinationCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     @Test
@@ -2319,7 +2319,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             destinationCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     @Test
@@ -2349,7 +2349,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             destinationCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     @Test
@@ -2399,7 +2399,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             secondCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     @Test
@@ -2430,7 +2430,7 @@ class DriverConductorTest
         verify(mockClientProxy).onError(
             secondCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
-            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+            "WARN - SendChannelEndpoint found in CLOSING state, please retry");
     }
 
     private void doWorkUntil(final BooleanSupplier condition, final LongConsumer timeConsumer)
