@@ -1636,6 +1636,11 @@ public final class DriverConductor implements Agent
             endpoint = null;
         }
 
+        if (null != endpoint)
+        {
+            throwResourceTemporaryUnavailableIfEndpointIsClosing(endpoint);
+        }
+
         return endpoint;
     }
 
@@ -1872,6 +1877,11 @@ public final class DriverConductor implements Agent
         if (null != endpoint && endpoint.hasTag() && udpChannel.hasTag() && endpoint.tag() != udpChannel.tag())
         {
             endpoint = null;
+        }
+
+        if (null != endpoint)
+        {
+            throwResourceTemporaryUnavailableIfEndpointIsClosing(endpoint);
         }
 
         return endpoint;
@@ -2528,7 +2538,6 @@ public final class DriverConductor implements Agent
             channelEndpoint = findExistingSendChannelEndpoint(udpChannel);
             if (null != channelEndpoint)
             {
-                throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
                 validateUdpChannelAgainstSendChannelEndpoint(params, udpChannel, channelEndpoint);
 
                 if (!isExclusive)
@@ -2605,7 +2614,6 @@ public final class DriverConductor implements Agent
             responsePublicationImage = findResponsePublicationImage();
 
             channelEndpoint = getOrCreateSendChannelEndpoint(params, udpChannel, correlationId);
-            throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
 
             publication = newNetworkPublication(
                 correlationId,
@@ -2934,7 +2942,6 @@ public final class DriverConductor implements Agent
         private void resolvingEndpoint()
         {
             channelEndpoint = getOrCreateReceiveChannelEndpoint(params, udpChannel, registrationId);
-            throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
             state = State.CREATING_LINKS;
         }
 
