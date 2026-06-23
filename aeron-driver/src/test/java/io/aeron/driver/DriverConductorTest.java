@@ -29,6 +29,7 @@ import io.aeron.driver.media.UdpChannel;
 import io.aeron.driver.media.WildcardPortManager;
 import io.aeron.driver.status.DutyCycleStallTracker;
 import io.aeron.driver.status.SystemCounters;
+import io.aeron.exceptions.ControlProtocolException;
 import io.aeron.logbuffer.HeaderWriter;
 import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.protocol.SetupFlyweight;
@@ -112,6 +113,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.any;
@@ -2129,76 +2131,6 @@ class DriverConductorTest
         verify(mockErrorHandler).onError(argThat(error -> error.getMessage().contains(endpoint)));
     }
 
-    private void doWorkUntil(final BooleanSupplier condition, final LongConsumer timeConsumer)
-    {
-        while (!condition.getAsBoolean())
-        {
-            final long millisecondsToAdvance = 16;
-
-            nanoClock.advance(TimeUnit.MILLISECONDS.toNanos(millisecondsToAdvance));
-            epochClock.advance(millisecondsToAdvance);
-            timeConsumer.accept(nanoClock.nanoTime());
-            doWork();
-        }
-    }
-
-    private void doWorkUntil(final BooleanSupplier condition)
-    {
-        doWorkUntil(condition, (j) -> {});
-    }
-
-    private static String spyForChannel(final String channel)
-    {
-        return CommonContext.SPY_PREFIX + channel;
-    }
-
-    private static long networkPublicationCorrelationId(final NetworkPublication publication)
-    {
-        return LogBufferDescriptor.correlationId(publication.rawLog().metaData());
-    }
-
-    private static AtomicCounter clientHeartbeatCounter(final CountersReader countersReader)
-    {
-        for (int counterId = 0, maxId = countersReader.maxCounterId(); counterId <= maxId; counterId++)
-        {
-            final int counterState = countersReader.getCounterState(counterId);
-            if (counterState == RECORD_ALLOCATED && countersReader.getCounterTypeId(counterId) == HEARTBEAT_TYPE_ID)
-            {
-                return new AtomicCounter(countersReader.valuesBuffer(), counterId);
-            }
-            else if (RECORD_UNUSED == counterState)
-            {
-                break;
-            }
-        }
-
-        throw new IllegalStateException("could not find client heartbeat counter");
-    }
-
-    private void appendUnfragmentedMessage(
-        final RawLog rawLog,
-        final int partitionIndex,
-        final int termId,
-        final int termOffset,
-        final HeaderWriter header,
-        final DirectBuffer srcBuffer,
-        final int srcOffset,
-        final int length)
-    {
-        final UnsafeBuffer termBuffer = rawLog.termBuffers()[partitionIndex];
-        final int frameLength = length + HEADER_LENGTH;
-        final int alignedLength = align(frameLength, FRAME_ALIGNMENT);
-        final int resultingOffset = termOffset + alignedLength;
-        final long rawTail = LogBufferDescriptor.packTail(termId, resultingOffset);
-
-        LogBufferDescriptor.rawTail(rawLog.metaData(), partitionIndex, rawTail);
-
-        header.write(termBuffer, termOffset, frameLength, termId);
-        termBuffer.putBytes(termOffset + HEADER_LENGTH, srcBuffer, srcOffset, length);
-
-        frameLengthOrdered(termBuffer, termOffset, frameLength);
-    }
-
     @Test
     void shouldInferFeedbackGeneratorBasedOnMulticastAddress()
     {
@@ -2302,5 +2234,272 @@ class DriverConductorTest
         assertSame(StaticDelayGenerator.ZERO_DELAY_GENERATOR, feedbackDelayGenerator);
         assertEquals(0, feedbackDelayGenerator.generateDelayNs());
         assertEquals(0, feedbackDelayGenerator.retryDelayNs());
+    }
+
+    @Test
+    void onAddSendDestinationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing0()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?control=localhost:5555|control-mode=manual";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+        publication.channelEndpoint().indicateClosing();
+
+        final long destinationCorrelationId = 81;
+        driverConductor.onAddSendDestination(
+            publication.registrationId(), "aeron:udp?endpoint=localhost:8888", destinationCorrelationId);
+
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            destinationCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void onAddSendDestinationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing1()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?control=localhost:5555|control-mode=manual";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+
+        final long destinationCorrelationId = 99;
+        driverConductor.onAddSendDestination(
+            publication.registrationId(), "aeron:udp?endpoint=localhost:8888", destinationCorrelationId);
+
+        doWork();
+
+        publication.channelEndpoint().indicateClosing(); // after resolution completed
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            destinationCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void onRemoveSendDestinationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing0()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?control=localhost:5555|control-mode=manual";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+        publication.channelEndpoint().indicateClosing();
+
+        final long destinationCorrelationId = 117;
+        driverConductor.onRemoveSendDestination(
+            publication.registrationId(), "aeron:udp?endpoint=localhost:8888", destinationCorrelationId);
+
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            destinationCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void onRemoveSendDestinationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing1()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?control=localhost:5555|control-mode=manual";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+
+        final long destinationCorrelationId = 117;
+        driverConductor.onRemoveSendDestination(
+            publication.registrationId(), "aeron:udp?endpoint=localhost:8888", destinationCorrelationId);
+
+        doWork();
+
+        publication.channelEndpoint().indicateClosing(); // after resolution completed
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            destinationCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void onRemoveSendDestinationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing2()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?control=localhost:5555|control-mode=manual";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+        publication.channelEndpoint().indicateClosing();
+
+        final long destinationCorrelationId = 199999999, destinationRegistrationId = 555;
+        final ControlProtocolException exception = assertThrowsExactly(
+            ControlProtocolException.class,
+            () -> driverConductor.onRemoveSendDestination(
+                publication.registrationId(), destinationRegistrationId, destinationCorrelationId));
+        assertEquals(ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE, exception.errorCode());
+    }
+
+    @Test
+    void onAddNetworkPublicationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing0()
+    {
+        final long correlationId = 3, clientId = 1;
+        final int streamId = 444;
+        final String channel = "aeron:udp?endpoint=localhost:7777";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+        publication.channelEndpoint().indicateClosing();
+
+        final long secondCorrelationId = 33333;
+        driverConductor.onAddNetworkPublication(channel, streamId, secondCorrelationId, clientId, false);
+
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            secondCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void onAddNetworkPublicationShouldReturnResourceTemporaryUnavailableIfSendEndpointIsClosing1()
+    {
+        final long correlationId = -13, clientId = 10;
+        final int streamId = 1000;
+        final String channel = "aeron:udp?endpoint=localhost:5555";
+        driverConductor.onAddNetworkPublication(channel, streamId, correlationId, clientId, true);
+
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<NetworkPublication> captor = ArgumentCaptor.forClass(NetworkPublication.class);
+        verify(senderProxy, times(1)).newNetworkPublication(captor.capture());
+        final NetworkPublication publication = captor.getValue();
+
+        final long secondCorrelationId = 51;
+        driverConductor.onAddNetworkPublication(channel, streamId, secondCorrelationId, clientId, true);
+
+        // needs to cycles to get past log buffer creation in order to verify second state check
+        doWork();
+        doWork();
+
+        publication.channelEndpoint().indicateClosing();
+        doWorkUntilComplete();
+
+        verify(mockErrorHandler, never()).onError(any(Throwable.class));
+        verify(mockClientProxy).onError(
+            secondCorrelationId,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
+            "ERROR - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    private void doWorkUntil(final BooleanSupplier condition, final LongConsumer timeConsumer)
+    {
+        while (!condition.getAsBoolean())
+        {
+            final long millisecondsToAdvance = 16;
+
+            nanoClock.advance(TimeUnit.MILLISECONDS.toNanos(millisecondsToAdvance));
+            epochClock.advance(millisecondsToAdvance);
+            timeConsumer.accept(nanoClock.nanoTime());
+            doWork();
+        }
+    }
+
+    private void doWorkUntil(final BooleanSupplier condition)
+    {
+        doWorkUntil(condition, (j) -> {});
+    }
+
+    private static String spyForChannel(final String channel)
+    {
+        return CommonContext.SPY_PREFIX + channel;
+    }
+
+    private static long networkPublicationCorrelationId(final NetworkPublication publication)
+    {
+        return LogBufferDescriptor.correlationId(publication.rawLog().metaData());
+    }
+
+    private static AtomicCounter clientHeartbeatCounter(final CountersReader countersReader)
+    {
+        for (int counterId = 0, maxId = countersReader.maxCounterId(); counterId <= maxId; counterId++)
+        {
+            final int counterState = countersReader.getCounterState(counterId);
+            if (counterState == RECORD_ALLOCATED && countersReader.getCounterTypeId(counterId) == HEARTBEAT_TYPE_ID)
+            {
+                return new AtomicCounter(countersReader.valuesBuffer(), counterId);
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
+            }
+        }
+
+        throw new IllegalStateException("could not find client heartbeat counter");
+    }
+
+    private void appendUnfragmentedMessage(
+        final RawLog rawLog,
+        final int partitionIndex,
+        final int termId,
+        final int termOffset,
+        final HeaderWriter header,
+        final DirectBuffer srcBuffer,
+        final int srcOffset,
+        final int length)
+    {
+        final UnsafeBuffer termBuffer = rawLog.termBuffers()[partitionIndex];
+        final int frameLength = length + HEADER_LENGTH;
+        final int alignedLength = align(frameLength, FRAME_ALIGNMENT);
+        final int resultingOffset = termOffset + alignedLength;
+        final long rawTail = LogBufferDescriptor.packTail(termId, resultingOffset);
+
+        LogBufferDescriptor.rawTail(rawLog.metaData(), partitionIndex, rawTail);
+
+        header.write(termBuffer, termOffset, frameLength, termId);
+        termBuffer.putBytes(termOffset + HEADER_LENGTH, srcBuffer, srcOffset, length);
+
+        frameLengthOrdered(termBuffer, termOffset, frameLength);
     }
 }

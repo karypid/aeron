@@ -1587,10 +1587,8 @@ public final class DriverConductor implements Agent
     {
         SendChannelEndpoint sendChannelEndpoint = null;
 
-        for (int i = 0, size = networkPublications.size(); i < size; i++)
+        for (final NetworkPublication publication : networkPublications)
         {
-            final NetworkPublication publication = networkPublications.get(i);
-
             if (registrationId == publication.registrationId())
             {
                 sendChannelEndpoint = publication.channelEndpoint();
@@ -1604,6 +1602,8 @@ public final class DriverConductor implements Agent
         }
 
         sendChannelEndpoint.validateAllowsManualControl();
+
+        throwResourceTemporaryUnavailableIfEndpointIsClosing(sendChannelEndpoint);
 
         return sendChannelEndpoint;
     }
@@ -2403,6 +2403,26 @@ public final class DriverConductor implements Agent
         }
     }
 
+    private static void throwResourceTemporaryUnavailableIfEndpointIsClosing(final SendChannelEndpoint endpoint)
+    {
+        if (ChannelEndpointStatus.CLOSING == endpoint.status())
+        {
+            throw new ControlProtocolException(
+                RESOURCE_TEMPORARILY_UNAVAILABLE,
+                "SendChannelEndpoint found in CLOSING state, please retry");
+        }
+    }
+
+    private static void throwResourceTemporaryUnavailableIfEndpointIsClosing(final ReceiveChannelEndpoint endpoint)
+    {
+        if (ChannelEndpointStatus.CLOSING == endpoint.status())
+        {
+            throw new ControlProtocolException(
+                RESOURCE_TEMPORARILY_UNAVAILABLE,
+                "ReceiveChannelEndpoint found in CLOSING state, please retry");
+        }
+    }
+
     private final class AddNetworkPublicationCommand extends ClientCommand
     {
         private final String channel;
@@ -2508,15 +2528,7 @@ public final class DriverConductor implements Agent
             channelEndpoint = findExistingSendChannelEndpoint(udpChannel);
             if (null != channelEndpoint)
             {
-                if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
-                {
-                    clientProxy.onError(
-                        correlationId,
-                        RESOURCE_TEMPORARILY_UNAVAILABLE,
-                        "SendChannelEndpoint found in CLOSING state, please retry");
-                    state = State.DONE;
-                    return;
-                }
+                throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
                 validateUdpChannelAgainstSendChannelEndpoint(params, udpChannel, channelEndpoint);
 
                 if (!isExclusive)
@@ -2593,15 +2605,7 @@ public final class DriverConductor implements Agent
             responsePublicationImage = findResponsePublicationImage();
 
             channelEndpoint = getOrCreateSendChannelEndpoint(params, udpChannel, correlationId);
-            if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
-            {
-                clientProxy.onError(
-                    correlationId,
-                    RESOURCE_TEMPORARILY_UNAVAILABLE,
-                    "SendChannelEndpoint found in CLOSING state, please retry");
-                state = State.DONE;
-                return;
-            }
+            throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
 
             publication = newNetworkPublication(
                 correlationId,
@@ -2930,18 +2934,8 @@ public final class DriverConductor implements Agent
         private void resolvingEndpoint()
         {
             channelEndpoint = getOrCreateReceiveChannelEndpoint(params, udpChannel, registrationId);
-            if (ChannelEndpointStatus.CLOSING == channelEndpoint.status())
-            {
-                clientProxy.onError(
-                    registrationId,
-                    RESOURCE_TEMPORARILY_UNAVAILABLE,
-                    "ReceiveChannelEndpoint found in CLOSING state, please retry");
-                state = State.DONE;
-            }
-            else
-            {
-                state = State.CREATING_LINKS;
-            }
+            throwResourceTemporaryUnavailableIfEndpointIsClosing(channelEndpoint);
+            state = State.CREATING_LINKS;
         }
 
         private void creatingLinks()
@@ -3279,7 +3273,6 @@ public final class DriverConductor implements Agent
         private final String destinationChannel;
         private State state = State.INIT;
         private ChannelUri channelUri;
-        private SendChannelEndpoint sendChannelEndpoint;
         private CommandResult<InetSocketAddress> destinationAddressResult;
 
         private AddSendDestinationCommand(
@@ -3302,6 +3295,8 @@ public final class DriverConductor implements Agent
                 final InetSocketAddress address = destinationAddressResult.get();
                 if (null != address)
                 {
+                    final SendChannelEndpoint sendChannelEndpoint =
+                        findExistingManualSendChannelEndpoint(registrationId);
                     senderProxy.addDestination(sendChannelEndpoint, channelUri, address, correlationId);
                     clientProxy.operationSucceeded(correlationId);
                     state = State.DONE;
@@ -3317,7 +3312,7 @@ public final class DriverConductor implements Agent
             validateDestinationUri(channelUri, destinationChannel);
             validateSendDestinationUri(channelUri, destinationChannel);
 
-            sendChannelEndpoint = findExistingManualSendChannelEndpoint(registrationId);
+            findExistingManualSendChannelEndpoint(registrationId);
 
             destinationAddressResult = nativeResourceAgentProxy.destinationAddress(channelUri);
             state = State.AWAITING_DESTINATION_ADDRESS;
@@ -3337,7 +3332,6 @@ public final class DriverConductor implements Agent
         private final String destinationChannel;
         private State state = State.INIT;
         private ChannelUri channelUri;
-        private SendChannelEndpoint sendChannelEndpoint;
         private CommandResult<InetSocketAddress> destinationAddressResult;
 
         private RemoveSendDestinationCommand(
@@ -3360,6 +3354,8 @@ public final class DriverConductor implements Agent
                 final InetSocketAddress address = destinationAddressResult.get();
                 if (null != address)
                 {
+                    final SendChannelEndpoint sendChannelEndpoint =
+                        findExistingManualSendChannelEndpoint(registrationId);
                     senderProxy.removeDestination(sendChannelEndpoint, channelUri, address);
                     clientProxy.operationSucceeded(correlationId);
                     state = State.DONE;
@@ -3372,7 +3368,7 @@ public final class DriverConductor implements Agent
         private void init()
         {
             channelUri = parseUri(destinationChannel);
-            sendChannelEndpoint = findExistingManualSendChannelEndpoint(registrationId);
+            findExistingManualSendChannelEndpoint(registrationId);
 
             destinationAddressResult = nativeResourceAgentProxy.destinationAddress(channelUri);
             state = State.AWAITING_DESTINATION_ADDRESS;

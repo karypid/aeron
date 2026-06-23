@@ -394,20 +394,26 @@ final class ClientCommandAdapter implements ControlledMessageHandler
 
     void onError(final long correlationId, final Exception error)
     {
-        errorHandler.onError(error);
-
-        if (error instanceof ControlProtocolException)
+        if (error instanceof ControlProtocolException cpe)
         {
-            clientProxy.onError(correlationId, ((ControlProtocolException)error).errorCode(), error.getMessage());
-        }
-        else if (StorageSpaceException.isStorageSpaceError(error))
-        {
-            clientProxy.onError(correlationId, STORAGE_SPACE, error.getMessage());
+            if (ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE != cpe.errorCode())
+            {
+                errorHandler.onError(error);
+            }
+            clientProxy.onError(correlationId, cpe.errorCode(), error.getMessage());
         }
         else
         {
-            final String errorMessage = error.getClass().getName() + " : " + error.getMessage();
-            clientProxy.onError(correlationId, GENERIC_ERROR, errorMessage);
+            errorHandler.onError(error);
+            if (StorageSpaceException.isStorageSpaceError(error))
+            {
+                clientProxy.onError(correlationId, STORAGE_SPACE, error.getMessage());
+            }
+            else
+            {
+                final String errorMessage = error.getClass().getName() + " : " + error.getMessage();
+                clientProxy.onError(correlationId, GENERIC_ERROR, errorMessage);
+            }
         }
     }
 }
