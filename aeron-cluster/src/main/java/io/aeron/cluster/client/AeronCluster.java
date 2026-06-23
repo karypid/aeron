@@ -2397,7 +2397,10 @@ public final class AeronCluster implements AutoCloseable
                     catch (final RegistrationException ex)
                     {
                         ingressRegistrationId = NULL_VALUE;
-                        throw ex;
+                        if (ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE != ex.errorCode())
+                        {
+                            throw ex;
+                        }
                     }
                 }
                 else
@@ -2408,27 +2411,7 @@ public final class AeronCluster implements AutoCloseable
             }
             else
             {
-                int count = 0;
-                for (final MemberIngress member : memberByIdMap.values())
-                {
-                    if (null != member.publication || null != member.publicationException)
-                    {
-                        count++;
-                    }
-                    else
-                    {
-                        if (NULL_VALUE == member.registrationId)
-                        {
-                            member.asyncAddPublication();
-                        }
-                        member.asyncGetPublication();
-                    }
-                }
-
-                if (memberByIdMap.size() == count)
-                {
-                    state(State.AWAIT_PUBLICATION_CONNECTED);
-                }
+                state(State.AWAIT_PUBLICATION_CONNECTED);
             }
         }
 
@@ -2441,8 +2424,12 @@ public final class AeronCluster implements AutoCloseable
                 {
                     for (final MemberIngress member : memberByIdMap.values())
                     {
-                        if (null == member.publication && NULL_VALUE != member.registrationId)
+                        if (null == member.publication && null == member.publicationException)
                         {
+                            if (NULL_VALUE == member.registrationId)
+                            {
+                                member.asyncAddPublication();
+                            }
                             member.asyncGetPublication();
                         }
 
@@ -2650,7 +2637,10 @@ public final class AeronCluster implements AutoCloseable
             }
             catch (final RegistrationException ex)
             {
-                publicationException = ex;
+                if (ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE != ex.errorCode())
+                {
+                    publicationException = ex;
+                }
                 registrationId = NULL_VALUE;
             }
         }
