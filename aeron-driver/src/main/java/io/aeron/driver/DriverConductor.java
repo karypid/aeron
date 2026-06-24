@@ -2497,11 +2497,6 @@ public final class DriverConductor implements Agent
                 createPublication();
             }
 
-            if (State.LINK_PUBLICATION == state)
-            {
-                linkPublication();
-            }
-
             return State.DONE == state;
         }
 
@@ -2597,7 +2592,7 @@ public final class DriverConductor implements Agent
 
                 responsePublicationImage = findResponsePublicationImage();
 
-                state = State.LINK_PUBLICATION;
+                linkPublication();
             }
         }
 
@@ -2629,7 +2624,7 @@ public final class DriverConductor implements Agent
             rawLog = null; // ownership transferred to the NetworkPublication
 
             isNewPublication = true;
-            state = State.LINK_PUBLICATION;
+            linkPublication();
         }
 
         private void linkPublication()
@@ -2705,7 +2700,6 @@ public final class DriverConductor implements Agent
             RESOLVE_PUBLICATION,
             AWAIT_LOG_BUFFER,
             CREATE_PUBLICATION,
-            LINK_PUBLICATION,
             DONE
         }
     }
@@ -2758,11 +2752,6 @@ public final class DriverConductor implements Agent
             if (State.CREATE_PUBLICATION == state)
             {
                 createPublication();
-            }
-
-            if (State.LINK_PUBLICATION == state)
-            {
-                linkPublication();
             }
 
             return State.DONE == state;
@@ -2819,7 +2808,7 @@ public final class DriverConductor implements Agent
                     publication.startingTermId(),
                     publication.startingTermOffset());
 
-                state = State.LINK_PUBLICATION;
+                linkPublication();
             }
         }
 
@@ -2831,7 +2820,7 @@ public final class DriverConductor implements Agent
 
             rawLog = null; // ownership transferred to the IpcPublication
 
-            state = State.LINK_PUBLICATION;
+            linkPublication();
         }
 
         private void linkPublication()
@@ -2862,7 +2851,6 @@ public final class DriverConductor implements Agent
             RESOLVE_PUBLICATION,
             AWAIT_LOG_BUFFER,
             CREATE_PUBLICATION,
-            LINK_PUBLICATION,
             DONE
         }
     }
