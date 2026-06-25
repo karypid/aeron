@@ -160,16 +160,26 @@ aeron_linger_resource_entry_t;
 
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
+typedef enum aeron_driver_conductor_command_state_en
+{
+    AERON_DRIVER_CONDUCTOR_COMMAND_STATE_ERROR = -1,
+    AERON_DRIVER_CONDUCTOR_COMMAND_STATE_RUNNING = 0,
+    AERON_DRIVER_CONDUCTOR_COMMAND_STATE_DONE = 1
+}
+aeron_driver_conductor_command_state_t;
+
 typedef struct aeron_driver_conductor_driver_command_stct
 {
-    int (*execute)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_driver_command_stct *cmd);
+    aeron_driver_conductor_command_state_t (*execute)(
+        aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_driver_command_stct *cmd);
     void (*free)(struct aeron_driver_conductor_driver_command_stct *cmd);
 }
 aeron_driver_conductor_driver_command_t;
 
 typedef struct aeron_driver_conductor_client_command_stct
 {
-    int (*execute)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_client_command_stct *cmd);
+    aeron_driver_conductor_command_state_t (*execute)(
+        aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_client_command_stct *cmd);
     void (*free)(struct aeron_driver_conductor_client_command_stct *cmd);
     aeron_correlated_command_t *correlated;
 }

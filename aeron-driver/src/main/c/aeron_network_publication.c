@@ -285,7 +285,7 @@ int aeron_network_publication_create(
     _pub->conductor_fields.has_reached_end_of_life = false;
     _pub->conductor_fields.clean_position = 0;
     _pub->conductor_fields.state = AERON_NETWORK_PUBLICATION_STATE_ACTIVE;
-    _pub->conductor_fields.refcnt = 1;
+    _pub->conductor_fields.refcnt = 0;
     _pub->conductor_fields.time_of_last_activity_ns = now_ns;
     _pub->conductor_fields.last_snd_pos = 0;
     _pub->session_id = session_id;
