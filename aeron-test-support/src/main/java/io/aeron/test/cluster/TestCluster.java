@@ -82,6 +82,7 @@ import org.agrona.BitUtil;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
+import org.agrona.SystemUtil;
 import org.agrona.collections.ArrayUtil;
 import org.agrona.collections.IntHashSet;
 import org.agrona.collections.MutableBoolean;
@@ -120,7 +121,13 @@ import java.util.stream.Stream;
 
 import static io.aeron.Aeron.NULL_VALUE;
 import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
+import static io.aeron.cluster.ConsensusModule.Configuration.ELECTION_STATUS_INTERVAL_DEFAULT_NS;
+import static io.aeron.cluster.ConsensusModule.Configuration.ELECTION_TIMEOUT_DEFAULT_NS;
+import static io.aeron.cluster.ConsensusModule.Configuration.LEADER_HEARTBEAT_INTERVAL_DEFAULT_NS;
+import static io.aeron.cluster.ConsensusModule.Configuration.LEADER_HEARTBEAT_TIMEOUT_DEFAULT_NS;
 import static io.aeron.cluster.ConsensusModule.Configuration.SERVICE_ID;
+import static io.aeron.cluster.ConsensusModule.Configuration.STARTUP_CANVASS_TIMEOUT_DEFAULT_NS;
+import static io.aeron.cluster.ConsensusModule.Configuration.TERMINATION_TIMEOUT_DEFAULT_NS;
 import static io.aeron.cluster.service.Cluster.Role.FOLLOWER;
 import static io.aeron.test.cluster.ClusterTests.LARGE_MSG;
 import static io.aeron.test.cluster.ClusterTests.PAUSE;
@@ -143,12 +150,35 @@ public final class TestCluster implements AutoCloseable
     static final String EGRESS_CHANNEL = "aeron:udp?term-length=128k|endpoint=localhost:0|alias=egress";
     static final String INGRESS_CHANNEL = "aeron:udp?term-length=128k|alias=ingress";
     static final String CONSENSUS_CHANNEL = "aeron:udp?alias=consensus";
-    static final long LEADER_HEARTBEAT_TIMEOUT_NS = TimeUnit.SECONDS.toNanos(1);
-    static final long LEADER_HEARTBEAT_INTERVAL_NS = TimeUnit.MILLISECONDS.toNanos(100);
-    static final long ELECTION_TIMEOUT_NS = TimeUnit.MILLISECONDS.toNanos(500);
-    static final long ELECTION_STATUS_INTERVAL_NS = TimeUnit.MILLISECONDS.toNanos(100);
-    static final long STARTUP_CANVASS_TIMEOUT_NS = LEADER_HEARTBEAT_TIMEOUT_NS * 2;
-    static final long TERMINATION_TIMEOUT_NS = LEADER_HEARTBEAT_TIMEOUT_NS;
+    static final long LEADER_HEARTBEAT_TIMEOUT_NS;
+    static final long LEADER_HEARTBEAT_INTERVAL_NS;
+    static final long ELECTION_TIMEOUT_NS;
+    static final long ELECTION_STATUS_INTERVAL_NS;
+    static final long STARTUP_CANVASS_TIMEOUT_NS;
+    static final long TERMINATION_TIMEOUT_NS;
+
+    static
+    {
+        if (SystemUtil.isWindows())
+        {
+            LEADER_HEARTBEAT_TIMEOUT_NS = LEADER_HEARTBEAT_TIMEOUT_DEFAULT_NS;
+            LEADER_HEARTBEAT_INTERVAL_NS = LEADER_HEARTBEAT_INTERVAL_DEFAULT_NS;
+            ELECTION_TIMEOUT_NS = ELECTION_TIMEOUT_DEFAULT_NS;
+            ELECTION_STATUS_INTERVAL_NS = ELECTION_STATUS_INTERVAL_DEFAULT_NS;
+            STARTUP_CANVASS_TIMEOUT_NS = STARTUP_CANVASS_TIMEOUT_DEFAULT_NS;
+            TERMINATION_TIMEOUT_NS = TERMINATION_TIMEOUT_DEFAULT_NS;
+        }
+        else
+        {
+            LEADER_HEARTBEAT_TIMEOUT_NS = TimeUnit.SECONDS.toNanos(2);
+            LEADER_HEARTBEAT_INTERVAL_NS = LEADER_HEARTBEAT_INTERVAL_DEFAULT_NS;
+            ELECTION_TIMEOUT_NS = ELECTION_TIMEOUT_DEFAULT_NS;
+            ELECTION_STATUS_INTERVAL_NS = ELECTION_STATUS_INTERVAL_DEFAULT_NS;
+            STARTUP_CANVASS_TIMEOUT_NS = LEADER_HEARTBEAT_TIMEOUT_NS * 5;
+            TERMINATION_TIMEOUT_NS = LEADER_HEARTBEAT_TIMEOUT_NS;
+        }
+    }
+
     public static final String CLUSTER_BASE_DIR_PROP_NAME = "aeron.test.system.cluster.base.dir";
 
     public static final String DEFAULT_NODE_MAPPINGS =
