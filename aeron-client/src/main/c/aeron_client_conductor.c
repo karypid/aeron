@@ -1317,8 +1317,10 @@ static int aeron_client_conductor_check_liveness(aeron_client_conductor_t *condu
             char buffer[AERON_ERROR_MAX_TOTAL_LENGTH];
             snprintf(buffer, sizeof(buffer) - 1, "MediaDriver has been shutdown");
             conductor->error_handler(conductor->error_handler_clientd, AERON_CLIENT_ERROR_DRIVER_TIMEOUT, buffer);
+            return -1;
         }
-        else if (now_ms > (last_keepalive_ms + (int64_t)conductor->driver_timeout_ms))
+
+        if (now_ms > (last_keepalive_ms + (int64_t)conductor->driver_timeout_ms))
         {
             conductor->is_terminating = true;
             aeron_client_conductor_force_close_resources(conductor);
@@ -1329,6 +1331,7 @@ static int aeron_client_conductor_check_liveness(aeron_client_conductor_t *condu
                 (int64_t)(now_ms - last_keepalive_ms),
                 (int64_t)conductor->driver_timeout_ms);
             conductor->error_handler(conductor->error_handler_clientd, AERON_CLIENT_ERROR_DRIVER_TIMEOUT, buffer);
+            return -1;
         }
 
         if (AERON_NULL_COUNTER_ID == conductor->heartbeat_timestamp.counter_id)
