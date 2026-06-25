@@ -21,7 +21,6 @@ import io.aeron.exceptions.RegistrationException;
 import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.test.InterruptingTestCallback;
 import io.aeron.test.SystemTestWatcher;
-import io.aeron.test.Tests;
 import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.CloseHelper;
 import org.agrona.ErrorHandler;
@@ -36,6 +35,8 @@ import java.util.stream.Stream;
 
 import static io.aeron.CommonContext.IPC_MEDIA;
 import static io.aeron.CommonContext.UDP_MEDIA;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
@@ -91,24 +92,30 @@ class SessionSpecificPublicationTest
 
     @ParameterizedTest
     @MethodSource("data")
-    void shouldNotCreateExclusivePublicationWhenSessionIdCollidesWithExistingPublication(
+    void shouldNotCreateExclusivePublicationWhenSessionIdCollidesWithExistingExclusivePublication(
         final ChannelUriStringBuilder channelBuilder)
     {
         final String channel = channelBuilder.build();
-        aeron.addSubscription(channel, STREAM_ID);
-
         final Publication publication = aeron.addExclusivePublication(channel, STREAM_ID);
-        Tests.awaitConnected(publication);
 
         final int existingSessionId = publication.sessionId();
         final String invalidChannel = channelBuilder.sessionId(existingSessionId).build();
 
-        assertThrows(RegistrationException.class, () ->
-        {
-            aeron.addExclusivePublication(invalidChannel, STREAM_ID);
+        assertThrows(RegistrationException.class, () -> aeron.addExclusivePublication(invalidChannel, STREAM_ID));
+    }
 
-            fail("Exception should have been thrown due to duplicate session id");
-        });
+    @ParameterizedTest
+    @MethodSource("data")
+    void shouldNotCreateExclusivePublicationWhenSessionIdCollidesWithExistingConcurrentPublication(
+        final ChannelUriStringBuilder channelBuilder)
+    {
+        final String channel = channelBuilder.build();
+        final Publication publication = aeron.addPublication(channel, STREAM_ID);
+
+        final int existingSessionId = publication.sessionId();
+        final String invalidChannel = channelBuilder.sessionId(existingSessionId).build();
+
+        assertThrows(RegistrationException.class, () -> aeron.addExclusivePublication(invalidChannel, STREAM_ID));
     }
 
     @ParameterizedTest
@@ -153,16 +160,10 @@ class SessionSpecificPublicationTest
     {
         channelBuilder.endpoint(ENDPOINT);
 
-        final String channelOne = channelBuilder.sessionId(SESSION_ID_1).build();
-        final String channelTwo = channelBuilder.sessionId(SESSION_ID_2).build();
+        aeron.addPublication(channelBuilder.sessionId(SESSION_ID_1).build(), STREAM_ID);
 
         assertThrows(RegistrationException.class, () ->
-        {
-            aeron.addPublication(channelOne, STREAM_ID);
-            aeron.addPublication(channelTwo, STREAM_ID);
-
-            fail("Exception should have been thrown due using different session ids");
-        });
+            aeron.addPublication(channelBuilder.sessionId(SESSION_ID_2).build(), STREAM_ID));
     }
 
     @ParameterizedTest
@@ -173,5 +174,18 @@ class SessionSpecificPublicationTest
 
         aeron.addPublication(channel, STREAM_ID);
         aeron.addPublication(channel, STREAM_ID + 1);
+    }
+
+    @ParameterizedTest
+    @MethodSource("data")
+    void twoExclusivePublicationsOnTheSameStreamShouldHaveUniqueSessionIds(final ChannelUriStringBuilder channelBuilder)
+    {
+        final String channel = channelBuilder.build();
+
+        final ExclusivePublication pub1 = aeron.addExclusivePublication(channel, STREAM_ID);
+        final ExclusivePublication pub2 = aeron.addExclusivePublication(channel, STREAM_ID);
+        assertNotSame(pub1, pub2);
+        assertNotEquals(pub1.originalRegistrationId(), pub2.originalRegistrationId());
+        assertNotEquals(pub1.sessionId(), pub2.sessionId());
     }
 }
