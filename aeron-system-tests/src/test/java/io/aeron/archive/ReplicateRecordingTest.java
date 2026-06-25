@@ -144,11 +144,14 @@ class ReplicateRecordingTest
             .dirDeleteOnStart(true)
             .dirDeleteOnShutdown(true);
 
+        final AeronArchive.Context archiveClientContext = new AeronArchive.Context()
+            .messageTimeoutNs(TimeUnit.SECONDS.toNanos(1));
+
         srcArchiveCtx = new Archive.Context()
             .catalogCapacity(CATALOG_CAPACITY)
             .aeronDirectoryName(srcAeronDirectoryName)
             .controlChannel(SRC_CONTROL_REQUEST_CHANNEL)
-            .archiveClientContext(new AeronArchive.Context().controlResponseChannel(SRC_CONTROL_RESPONSE_CHANNEL))
+            .archiveClientContext(archiveClientContext.clone().controlResponseChannel(SRC_CONTROL_RESPONSE_CHANNEL))
             .recordingEventsEnabled(false)
             .replicationChannel(SRC_REPLICATION_CHANNEL)
             .deleteArchiveOnStart(true)
@@ -169,7 +172,7 @@ class ReplicateRecordingTest
             .catalogCapacity(CATALOG_CAPACITY)
             .aeronDirectoryName(dstAeronDirectoryName)
             .controlChannel(DST_CONTROL_REQUEST_CHANNEL)
-            .archiveClientContext(new AeronArchive.Context().controlResponseChannel(DST_CONTROL_RESPONSE_CHANNEL))
+            .archiveClientContext(archiveClientContext.clone().controlResponseChannel(DST_CONTROL_RESPONSE_CHANNEL))
             .recordingEventsEnabled(false)
             .replicationChannel(DST_REPLICATION_CHANNEL)
             .deleteArchiveOnStart(true)
@@ -1438,16 +1441,13 @@ class ReplicateRecordingTest
                 new ReplicationParams());
 
             awaitSignal(dstAeronArchive, dstRecordingSignalConsumer, REPLICATE);
+            fail("expected archive exception");
         }
         catch (final ArchiveException ex)
         {
             assertEquals(ArchiveException.REPLICATION_CONNECTION_FAILURE, ex.errorCode());
             awaitSignal(dstAeronArchive, dstRecordingSignalConsumer, REPLICATE_END);
-
-            return;
         }
-
-        fail("expected archive exception");
     }
 
     @Test
