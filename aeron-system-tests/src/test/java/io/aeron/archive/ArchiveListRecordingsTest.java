@@ -15,7 +15,6 @@
  */
 package io.aeron.archive;
 
-import io.aeron.Aeron;
 import io.aeron.ChannelUri;
 import io.aeron.CommonContext;
 import io.aeron.archive.client.AeronArchive;
@@ -43,6 +42,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import java.io.File;
 
 import static io.aeron.archive.ArchiveSystemTests.recordData;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -57,14 +57,10 @@ public class ArchiveListRecordingsTest
     final SystemTestWatcher systemTestWatcher = new SystemTestWatcher()
         .ignoreErrorsMatching(s -> s.contains("response publication is closed"));
 
-    // The default 10s client liveness (driver) timeout is too aggressive under sanitizers, where the driver
-    // conductor can be starved long enough to miss a keepalive. Used only by this test's clients - it is NOT a
-    // suite-wide override (that would break tests which rely on the default to bound a failure path).
-    private static final long DRIVER_TIMEOUT_S = 30;
+    private static final long DRIVER_TIMEOUT_MS = SECONDS.toMillis(30);
 
     private TestMediaDriver driver;
     private Archive archive;
-    private Aeron aeron;
 
     @BeforeEach
     void setUp()
@@ -89,24 +85,14 @@ public class ArchiveListRecordingsTest
         driver = TestMediaDriver.launch(driverCtx, systemTestWatcher);
         systemTestWatcher.dataCollector().add(driverCtx.aeronDirectory());
 
-        // Share a single conductor-invoker client (driven by the Archive conductor, as in ConsensusModule) so the
-        // Archive - and the test clients connected to it - tolerate a sanitizer-starved driver. ownsAeronClient is
-        // false on the Archive, so this client is closed explicitly in tearDown.
-        aeron = Aeron.connect(new Aeron.Context()
-            .aeronDirectoryName(driverCtx.aeronDirectoryName())
-            .useConductorAgentInvoker(true)
-            .driverTimeoutMs(SECONDS.toMillis(DRIVER_TIMEOUT_S)));
-
-        archive = Archive.launch(archiveContext
-            .aeron(aeron)
-            .ownsAeronClient(false));
+        archive = Archive.launch(archiveContext);
         systemTestWatcher.dataCollector().add(archiveContext.archiveDir());
     }
 
     @AfterEach
     void tearDown()
     {
-        CloseHelper.quietCloseAll(archive, aeron, driver);
+        CloseHelper.quietCloseAll(archive, driver);
     }
 
     @Test
@@ -198,9 +184,8 @@ public class ArchiveListRecordingsTest
     void shouldFailToUpdateChannelWhileARecordingListingIsRunning()
     {
         try (AeronArchive aeronArchive = AeronArchive.connect(TestContexts.ipcAeronArchive()
-            .aeron(aeron)
-            .ownsAeronClient(false)
-            .messageTimeoutNs(SECONDS.toNanos(DRIVER_TIMEOUT_S))))
+            .aeronDirectoryName(driver.aeronDirectoryName())
+            .messageTimeoutNs(MILLISECONDS.toNanos(DRIVER_TIMEOUT_MS))))
         {
             final ArchiveSystemTests.RecordingResult result1 = recordData(
                 aeronArchive, 1, "alias=original");
