@@ -1326,7 +1326,8 @@ static int aeron_client_conductor_check_liveness(aeron_client_conductor_t *condu
             aeron_client_conductor_force_close_resources(conductor);
 
             char buffer[AERON_ERROR_MAX_TOTAL_LENGTH];
-            snprintf(buffer, sizeof(buffer) - 1,
+            snprintf(
+                buffer, sizeof(buffer) - 1,
                 "MediaDriver keepalive: age=%" PRId64 "ms > timeout=%" PRId64 "ms",
                 (int64_t)(now_ms - last_keepalive_ms),
                 (int64_t)conductor->driver_timeout_ms);
