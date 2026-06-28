@@ -240,7 +240,7 @@ TEST_F(WrapperSystemTest, shouldRemovePendingAsyncExclusivePublicationUponError)
     catch( const AeronException& e )
     {
         auto errorMsg = std::string(e.what());
-        EXPECT_NE(std::string::npos, errorMsg.find("session-id is already in exclusive use for channel", 0));
+        EXPECT_NE(std::string::npos, errorMsg.find("existing publication has clashing sessionId", 0));
     }
 
     try

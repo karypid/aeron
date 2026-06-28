@@ -90,11 +90,9 @@ typedef struct aeron_publication_image_stct
     aeron_loss_detector_t loss_detector;
     aeron_feedback_delay_generator_state_t feedback_delay_state;
 
-    aeron_mapped_raw_log_t mapped_raw_log;
     aeron_position_t rcv_hwm_position;
     aeron_position_t rcv_pos_position;
     aeron_atomic_counter_t rcv_naks_sent;
-    aeron_logbuffer_metadata_t *log_meta_data;
 
     aeron_receive_channel_endpoint_t *endpoint;
     aeron_congestion_control_strategy_t *congestion_control;
@@ -102,7 +100,11 @@ typedef struct aeron_publication_image_stct
     aeron_clock_func_t epoch_clock;
     aeron_clock_cache_t *cached_clock;
 
-    char *log_file_name;
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    aeron_logbuffer_metadata_t *log_meta_data;
+    const char *log_file_name;
+    size_t log_file_name_length;
+
     int32_t session_id;
     int32_t stream_id;
     int32_t initial_term_id;
@@ -110,11 +112,8 @@ typedef struct aeron_publication_image_stct
     int32_t term_length;
     int32_t mtu_length;
     int32_t term_length_mask;
-    size_t log_file_name_length;
     size_t position_bits_to_shift;
 
-    aeron_raw_log_close_func_t raw_log_close_func;
-    aeron_raw_log_free_func_t raw_log_free_func;
     struct
     {
         aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change;
@@ -186,11 +185,12 @@ int aeron_publication_image_create(
     bool is_reliable,
     bool is_sparse,
     bool treat_as_multicast,
-    aeron_system_counters_t *system_counters);
+    aeron_system_counters_t *system_counters,
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    size_t log_file_name_length,
+    const char *log_file_name);
 
 int aeron_publication_image_close(aeron_counters_manager_t *counters_manager, aeron_publication_image_t *image);
-
-bool aeron_publication_image_free(aeron_publication_image_t *image);
 
 void aeron_publication_image_clean_buffer_to(aeron_publication_image_t *image, int64_t position);
 

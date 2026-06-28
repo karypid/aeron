@@ -123,12 +123,16 @@ aeron_subscription_link_t;
 typedef struct aeron_ipc_publication_entry_stct
 {
     aeron_ipc_publication_t *publication;
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    const char *log_file_name;
 }
- aeron_ipc_publication_entry_t;
+aeron_ipc_publication_entry_t;
 
 typedef struct aeron_network_publication_entry_stct
 {
     aeron_network_publication_t *publication;
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    const char *log_file_name;
 }
 aeron_network_publication_entry_t;
 
@@ -147,6 +151,8 @@ aeron_receive_channel_endpoint_entry_t;
 typedef struct aeron_publication_image_entry_stct
 {
     aeron_publication_image_t *image;
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    const char *log_file_name;
 }
 aeron_publication_image_entry_t;
 
@@ -172,7 +178,7 @@ typedef struct aeron_driver_conductor_driver_command_stct
 {
     aeron_driver_conductor_command_state_t (*execute)(
         aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_driver_command_stct *cmd);
-    void (*free)(struct aeron_driver_conductor_driver_command_stct *cmd);
+    void (*free)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_driver_command_stct *cmd);
 }
 aeron_driver_conductor_driver_command_t;
 
@@ -180,7 +186,7 @@ typedef struct aeron_driver_conductor_client_command_stct
 {
     aeron_driver_conductor_command_state_t (*execute)(
         aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_client_command_stct *cmd);
-    void (*free)(struct aeron_driver_conductor_client_command_stct *cmd);
+    void (*free)(aeron_driver_conductor_t *conductor, struct aeron_driver_conductor_client_command_stct *cmd);
     aeron_correlated_command_t *correlated;
 }
 aeron_driver_conductor_client_command_t;
@@ -227,7 +233,6 @@ typedef struct aeron_driver_conductor_stct
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_ipc_publication_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_ipc_publication_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_ipc_publication_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_ipc_publication_entry_t *);
     }
     ipc_publications;
 
@@ -255,19 +260,17 @@ typedef struct aeron_driver_conductor_stct
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_network_publication_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_network_publication_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_network_publication_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_network_publication_entry_t *);
     }
     network_publications;
 
     struct send_channel_endpoint_stct
     {
-        aeron_send_channel_endpoint_entry_t *array;
         size_t length;
         size_t capacity;
+        aeron_send_channel_endpoint_entry_t *array;
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_send_channel_endpoint_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_send_channel_endpoint_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_send_channel_endpoint_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_send_channel_endpoint_entry_t *);
     }
     send_channel_endpoints;
 
@@ -279,7 +282,6 @@ typedef struct aeron_driver_conductor_stct
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_receive_channel_endpoint_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_receive_channel_endpoint_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_receive_channel_endpoint_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_receive_channel_endpoint_entry_t *);
     }
     receive_channel_endpoints;
 
@@ -291,7 +293,6 @@ typedef struct aeron_driver_conductor_stct
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_publication_image_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_publication_image_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_publication_image_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_publication_image_entry_t *);
     }
     publication_images;
 
@@ -303,7 +304,6 @@ typedef struct aeron_driver_conductor_stct
         void (*on_time_event)(aeron_driver_conductor_t *, aeron_linger_resource_entry_t *, int64_t, int64_t);
         bool (*has_reached_end_of_life)(aeron_driver_conductor_t *, aeron_linger_resource_entry_t *);
         void (*delete_func)(aeron_driver_conductor_t *, aeron_linger_resource_entry_t *);
-        void (*free_func)(aeron_driver_conductor_t *, aeron_linger_resource_entry_t *);
     }
     lingering_resources;
 
@@ -335,11 +335,6 @@ void aeron_client_on_time_event(
 
 bool aeron_client_has_reached_end_of_life(aeron_driver_conductor_t *conductor, aeron_client_t *client);
 
-void aeron_driver_conductor_add_end_of_life_resource(
-    aeron_driver_conductor_t *conductor,
-    void *resource,
-    aeron_end_of_life_resource_free_t free_func);
-
 void aeron_client_delete(aeron_driver_conductor_t *conductor, aeron_client_t *);
 
 bool aeron_client_free(void *);
@@ -352,8 +347,6 @@ bool aeron_ipc_publication_entry_has_reached_end_of_life(
 
 void aeron_ipc_publication_entry_delete(aeron_driver_conductor_t *conductor, aeron_ipc_publication_entry_t *);
 
-void aeron_ipc_publication_entry_free(aeron_driver_conductor_t *conductor, aeron_ipc_publication_entry_t *entry);
-
 void aeron_network_publication_entry_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_network_publication_entry_t *entry, int64_t now_ns, int64_t now_ms);
 
@@ -361,8 +354,6 @@ bool aeron_network_publication_entry_has_reached_end_of_life(
     aeron_driver_conductor_t *conductor, aeron_network_publication_entry_t *entry);
 
 void aeron_network_publication_entry_delete(aeron_driver_conductor_t *conductor, aeron_network_publication_entry_t *);
-
-void aeron_network_publication_entry_free(aeron_driver_conductor_t *conductor, aeron_network_publication_entry_t *entry);
 
 void aeron_send_channel_endpoint_entry_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_send_channel_endpoint_entry_t *entry, int64_t now_ns, int64_t now_ms);
@@ -389,8 +380,6 @@ bool aeron_publication_image_entry_has_reached_end_of_life(
     aeron_driver_conductor_t *conductor, aeron_publication_image_entry_t *entry);
 
 void aeron_publication_image_entry_delete(aeron_driver_conductor_t *conductor, aeron_publication_image_entry_t *);
-
-void aeron_publication_image_entry_free(aeron_driver_conductor_t *conductor, aeron_publication_image_entry_t *entry);
 
 void aeron_linger_resource_entry_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_linger_resource_entry_t *entry, int64_t now_ns, int64_t now_ms);

@@ -177,7 +177,10 @@ int aeron_publication_image_create(
     bool is_reliable,
     bool is_sparse,
     bool treat_as_multicast,
-    aeron_system_counters_t *system_counters)
+    aeron_system_counters_t *system_counters,
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    size_t log_file_name_length,
+    const char *log_file_name)
 {
     aeron_driver_context_t *context = conductor->context;
 
@@ -187,31 +190,9 @@ int aeron_publication_image_create(
 
     *image = NULL;
 
-    if (aeron_driver_context_run_storage_checks(context, log_length) < 0)
-    {
-        return -1;
-    }
-
     if (aeron_alloc((void **)&_image, sizeof(aeron_publication_image_t)) < 0)
     {
         AERON_APPEND_ERR("%s", "Could not allocate publication image");
-        return -1;
-    }
-
-    char path[AERON_MAX_PATH];
-    int path_length = aeron_publication_image_location(path, sizeof(path), context->aeron_dir, correlation_id);
-    if (path_length < 0)
-    {
-        AERON_APPEND_ERR("%s", "Could not resolve publication image file path");
-        aeron_free(_image);
-        return -1;
-    }
-
-    _image->log_file_name = NULL;
-    if (aeron_alloc((void **)(&_image->log_file_name), (size_t)path_length + 1) < 0)
-    {
-        AERON_APPEND_ERR("%s", "Could not allocate publication image log_file_name");
-        aeron_free(_image);
         return -1;
     }
 
@@ -233,19 +214,10 @@ int aeron_publication_image_create(
         goto error;
     }
 
-    if (context->raw_log_map_func(
-        &_image->mapped_raw_log, path, is_sparse, (uint64_t)term_buffer_length, context->file_page_size) < 0)
-    {
-        AERON_APPEND_ERR("error mapping network raw log: %s", path);
-        goto error;
-    }
-
     _image->mapped_bytes_counter = aeron_system_counter_addr(
         system_counters, AERON_SYSTEM_COUNTER_BYTES_CURRENTLY_MAPPED);
     aeron_counter_get_and_add_release(_image->mapped_bytes_counter, (int64_t) log_length);
 
-    _image->raw_log_close_func = context->raw_log_close_func;
-    _image->raw_log_free_func = context->raw_log_free_func;
     _image->log.untethered_subscription_state_change = context->log.untethered_subscription_on_state_change;
     _image->log.publication_image_revoke = context->log.publication_image_revoke;
 
@@ -262,10 +234,10 @@ int aeron_publication_image_create(
         aeron_publication_image_connection_set_control_address(&_image->connections.array[0], control_address);
     }
 
-    strncpy(_image->log_file_name, path, (size_t)path_length);
-    _image->log_file_name[path_length] = '\0';
-    _image->log_file_name_length = (size_t)path_length;
-    _image->log_meta_data = (aeron_logbuffer_metadata_t *)(_image->mapped_raw_log.log_meta_data.addr);
+    _image->mapped_raw_log = mapped_raw_log;
+    _image->log_file_name = log_file_name;
+    _image->log_file_name_length = log_file_name_length;
+    _image->log_meta_data = (aeron_logbuffer_metadata_t *)(_image->mapped_raw_log->log_meta_data.addr);
 
     aeron_driver_uri_subscription_params_t params;
     if (aeron_driver_uri_subscription_params(&endpoint->conductor_fields.udp_channel->uri, &params, conductor) < 0)
@@ -275,7 +247,7 @@ int aeron_publication_image_create(
     }
 
     aeron_logbuffer_metadata_init(
-        _image->mapped_raw_log.log_meta_data.addr,
+        _image->mapped_raw_log->log_meta_data.addr,
         INT64_MAX,
         0,
         0,
@@ -421,7 +393,6 @@ int aeron_publication_image_create(
 
 error:
     aeron_free(_image->connections.array);
-    aeron_free(_image->log_file_name);
     aeron_free(_image);
     return -1;
 }
@@ -445,32 +416,11 @@ int aeron_publication_image_close(aeron_counters_manager_t *counters_manager, ae
         aeron_free(image->connections.array);
 
         image->congestion_control->fini(image->congestion_control);
+        aeron_free((void *)image->invalidation_reason);
+        aeron_free(image);
     }
 
     return 0;
-}
-
-bool aeron_publication_image_free(aeron_publication_image_t *image)
-{
-    if (NULL == image)
-    {
-        return true;
-    }
-
-    if (!image->raw_log_free_func(&image->mapped_raw_log, image->log_file_name))
-    {
-        return false;
-    }
-
-    aeron_counter_get_and_add_release(
-        image->mapped_bytes_counter,
-        -((int64_t) image->mapped_raw_log.mapped_file.length));
-
-    aeron_free(image->log_file_name);
-    aeron_free((void *)image->invalidation_reason);
-    aeron_free(image);
-
-    return true;
 }
 
 void aeron_publication_image_clean_buffer_to(aeron_publication_image_t *image, int64_t position)
@@ -486,11 +436,11 @@ void aeron_publication_image_clean_buffer_to(aeron_publication_image_t *image, i
         size_t length = bytes_to_clean < bytes_left_in_term ? bytes_to_clean : bytes_left_in_term;
 
         memset(
-            image->mapped_raw_log.term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
+            image->mapped_raw_log->term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
             0,
             length - sizeof(int64_t));
 
-        volatile uint64_t *ptr = (volatile uint64_t *)(image->mapped_raw_log.term_buffers[dirty_index].addr + term_offset);
+        volatile uint64_t *ptr = (volatile uint64_t *)(image->mapped_raw_log->term_buffers[dirty_index].addr + term_offset);
         AERON_SET_RELEASE(*ptr, (uint64_t)0);
 
         image->conductor_fields.clean_position = clean_position + (int64_t)length;
@@ -563,7 +513,7 @@ void aeron_publication_image_track_rebuild(aeron_publication_image_t *image, int
         const int32_t rebuild_offset = aeron_loss_detector_scan(
             &image->loss_detector,
             &loss_found,
-            image->mapped_raw_log.term_buffers[index].addr,
+            image->mapped_raw_log->term_buffers[index].addr,
             rebuild_position,
             hwm_position,
             now_ns,
@@ -774,7 +724,7 @@ int aeron_publication_image_insert_packet(
             AERON_SET_RELEASE(image->time_of_last_packet_ns, now_ns);
 
             const size_t index = aeron_logbuffer_index_by_position(packet_position, image->position_bits_to_shift);
-            uint8_t *term_buffer = image->mapped_raw_log.term_buffers[index].addr;
+            uint8_t *term_buffer = image->mapped_raw_log->term_buffers[index].addr;
 
             aeron_term_rebuilder_insert(term_buffer + term_offset, buffer, length);
 
@@ -989,9 +939,9 @@ int aeron_publication_image_send_pending_loss(aeron_publication_image_t *image)
             else
             {
                 const size_t index = aeron_logbuffer_index_by_term(image->initial_term_id, term_id);
-                uint8_t *buffer = image->mapped_raw_log.term_buffers[index].addr;
+                uint8_t *buffer = image->mapped_raw_log->term_buffers[index].addr;
 
-                if (aeron_term_gap_filler_try_fill_gap(image->log_meta_data, buffer, term_id, term_offset, length))
+                if (aeron_term_gap_filler_try_fill_gap(image->log_meta_data, buffer, term_id, term_offset, (int32_t)length))
                 {
                     aeron_counter_increment_release(image->loss_gap_fills_counter);
                 }

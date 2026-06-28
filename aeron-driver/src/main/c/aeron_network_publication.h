@@ -41,6 +41,28 @@ aeron_network_publication_state_t;
 typedef struct aeron_send_channel_endpoint_stct aeron_send_channel_endpoint_t;
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
+int aeron_network_publication_create(
+    aeron_network_publication_t **publication,
+    aeron_send_channel_endpoint_t *endpoint,
+    aeron_driver_context_t *context,
+    int64_t registration_id,
+    int32_t session_id,
+    int32_t stream_id,
+    int32_t initial_term_id,
+    aeron_position_t *pub_pos_position,
+    aeron_position_t *pub_lmt_position,
+    aeron_position_t *snd_pos_position,
+    aeron_position_t *snd_lmt_position,
+    aeron_atomic_counter_t *snd_bpe_counter,
+    aeron_atomic_counter_t *snd_naks_received_counter,
+    aeron_flow_control_strategy_t *flow_control_strategy,
+    aeron_driver_uri_publication_params_t *params,
+    bool is_exclusive,
+    aeron_system_counters_t *system_counters,
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    size_t log_file_name_length,
+    const char *log_file_name);
+
 typedef struct aeron_network_publication_stct
 {
     struct aeron_network_publication_conductor_fields_stct
@@ -60,7 +82,6 @@ typedef struct aeron_network_publication_stct
     uint8_t conductor_fields_pad[
         (4 * AERON_CACHE_LINE_LENGTH) - sizeof(struct aeron_network_publication_conductor_fields_stct)];
 
-    aeron_mapped_raw_log_t mapped_raw_log;
     aeron_position_t pub_pos_position;
     aeron_position_t pub_lmt_position;
     aeron_position_t snd_pos_position;
@@ -68,10 +89,14 @@ typedef struct aeron_network_publication_stct
     aeron_atomic_counter_t snd_bpe_counter;
     aeron_atomic_counter_t snd_naks_received_counter;
     aeron_retransmit_handler_t retransmit_handler;
-    aeron_logbuffer_metadata_t *log_meta_data;
     aeron_send_channel_endpoint_t *endpoint;
     aeron_flow_control_strategy_t *flow_control;
     aeron_clock_cache_t *cached_clock;
+
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    aeron_logbuffer_metadata_t *log_meta_data;
+    const char *log_file_name;
+    size_t log_file_name_length;
 
     uint8_t sender_fields_pad_lhs[AERON_CACHE_LINE_LENGTH];
     bool has_initial_connection;
@@ -83,7 +108,6 @@ typedef struct aeron_network_publication_stct
 
     struct sockaddr_storage endpoint_address;
 
-    char *log_file_name;
     int64_t term_buffer_length;
     int64_t term_window_length;
     int64_t trip_gain;
@@ -102,7 +126,6 @@ typedef struct aeron_network_publication_stct
     int32_t starting_term_id;
     int32_t term_length_mask;
     size_t starting_term_offset;
-    size_t log_file_name_length;
     size_t position_bits_to_shift;
     size_t mtu_length;
     size_t max_messages_per_send;
@@ -117,8 +140,6 @@ typedef struct aeron_network_publication_stct
     volatile bool is_end_of_stream;
     volatile bool has_sender_released;
     volatile bool has_received_unicast_eos;
-    aeron_raw_log_close_func_t raw_log_close_func;
-    aeron_raw_log_free_func_t raw_log_free_func;
     struct
     {
         aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change;
@@ -133,35 +154,13 @@ typedef struct aeron_network_publication_stct
     volatile int64_t *retransmitted_bytes_counter;
     volatile int64_t *unblocked_publications_counter;
     volatile int64_t *publications_revoked_counter;
-    volatile int64_t *mapped_bytes_counter;
 
     aeron_int64_counter_map_t receiver_liveness_tracker;
 }
 aeron_network_publication_t;
 
-int aeron_network_publication_create(
-    aeron_network_publication_t **publication,
-    aeron_send_channel_endpoint_t *endpoint,
-    aeron_driver_context_t *context,
-    int64_t registration_id,
-    int32_t session_id,
-    int32_t stream_id,
-    int32_t initial_term_id,
-    aeron_position_t *pub_pos_position,
-    aeron_position_t *pub_lmt_position,
-    aeron_position_t *snd_pos_position,
-    aeron_position_t *snd_lmt_position,
-    aeron_atomic_counter_t *snd_bpe_counter,
-    aeron_atomic_counter_t *snd_naks_received_counter,
-    aeron_flow_control_strategy_t *flow_control_strategy,
-    aeron_driver_uri_publication_params_t *params,
-    bool is_exclusive,
-    aeron_system_counters_t *system_counters);
-
 void aeron_network_publication_close(
     aeron_counters_manager_t *counters_manager, aeron_network_publication_t *publication);
-
-bool aeron_network_publication_free(aeron_network_publication_t *publication);
 
 void aeron_network_publication_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_network_publication_t *publication, int64_t now_ns, int64_t now_ms);
@@ -231,7 +230,7 @@ inline int64_t aeron_network_publication_producer_position(aeron_network_publica
 
     return aeron_logbuffer_compute_position(
         aeron_logbuffer_term_id(raw_tail),
-        aeron_logbuffer_term_offset(raw_tail, (int32_t)publication->mapped_raw_log.term_length),
+        aeron_logbuffer_term_offset(raw_tail, (int32_t)publication->mapped_raw_log->term_length),
         publication->position_bits_to_shift,
         publication->initial_term_id);
 }

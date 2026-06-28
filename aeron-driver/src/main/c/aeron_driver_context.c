@@ -1191,7 +1191,6 @@ int aeron_driver_context_init(aeron_driver_context_t **context)
     _context->usable_fs_space_func = _context->perform_storage_checks ?
         aeron_usable_fs_space : aeron_usable_fs_space_disabled;
     _context->raw_log_map_func = aeron_raw_log_map;
-    _context->raw_log_close_func = aeron_raw_log_close;
     _context->raw_log_free_func = aeron_raw_log_free;
 
     _context->log.to_driver_interceptor = aeron_driver_conductor_to_driver_interceptor_null;

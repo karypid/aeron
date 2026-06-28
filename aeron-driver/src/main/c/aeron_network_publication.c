@@ -19,7 +19,6 @@
 #define _GNU_SOURCE
 #endif
 
-#include <errno.h>
 #include <string.h>
 #include <inttypes.h>
 #include "aeron_socket.h"
@@ -116,38 +115,18 @@ int aeron_network_publication_create(
     aeron_flow_control_strategy_t *flow_control_strategy,
     aeron_driver_uri_publication_params_t *params,
     bool is_exclusive,
-    aeron_system_counters_t *system_counters)
+    aeron_system_counters_t *system_counters,
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    size_t log_file_name_length,
+    const char *log_file_name)
 {
     aeron_network_publication_t *_pub = NULL;
-    const uint64_t log_length = aeron_logbuffer_compute_log_length(params->term_length, context->file_page_size);
 
     *publication = NULL;
-
-    if (aeron_driver_context_run_storage_checks(context, log_length) < 0)
-    {
-        return -1;
-    }
 
     if (aeron_alloc((void **)&_pub, sizeof(aeron_network_publication_t)) < 0)
     {
         AERON_APPEND_ERR("%s", "Could not allocate network publication");
-        return -1;
-    }
-
-    char path[AERON_MAX_PATH];
-    int path_length = aeron_network_publication_location(path, sizeof(path), context->aeron_dir, registration_id);
-    if (path_length < 0)
-    {
-        AERON_APPEND_ERR("%s", "Could not resolve network publication file path");
-        aeron_free(_pub);
-        return -1;
-    }
-
-    _pub->log_file_name = NULL;
-    if (aeron_alloc((void **)(&_pub->log_file_name), (size_t)path_length + 1) < 0)
-    {
-        AERON_APPEND_ERR("%s", "Could not allocate network publication log_file_name");
-        aeron_free(_pub);
         return -1;
     }
 
@@ -165,7 +144,6 @@ int aeron_network_publication_create(
         params->has_max_resend ? params->max_resend : context->max_resend,
         retransmit_overflow_counter) < 0)
     {
-        aeron_free(_pub->log_file_name);
         aeron_free(_pub);
         AERON_APPEND_ERR(
             "Could not init network publication retransmit handler, delay: %" PRIu64 ", linger: %" PRIu64,
@@ -174,29 +152,14 @@ int aeron_network_publication_create(
         return -1;
     }
 
-    if (context->raw_log_map_func(
-        &_pub->mapped_raw_log, path, params->is_sparse, params->term_length, context->file_page_size) < 0)
-    {
-        aeron_free(_pub->log_file_name);
-        aeron_free(_pub);
-        AERON_APPEND_ERR("error mapping network raw log: %s", path);
-        return -1;
-    }
-
-    _pub->mapped_bytes_counter = aeron_system_counter_addr(
-        system_counters, AERON_SYSTEM_COUNTER_BYTES_CURRENTLY_MAPPED);
-    aeron_counter_get_and_add_release(_pub->mapped_bytes_counter, (int64_t) log_length);
-
-    _pub->raw_log_close_func = context->raw_log_close_func;
-    _pub->raw_log_free_func = context->raw_log_free_func;
     _pub->log.untethered_subscription_state_change = context->log.untethered_subscription_on_state_change;
     _pub->log.resend = context->log.resend;
     _pub->log.publication_revoke = context->log.publication_revoke;
 
-    strncpy(_pub->log_file_name, path, (size_t)path_length);
-    _pub->log_file_name[path_length] = '\0';
-    _pub->log_file_name_length = (size_t)path_length;
-    _pub->log_meta_data = (aeron_logbuffer_metadata_t *)(_pub->mapped_raw_log.log_meta_data.addr);
+    _pub->mapped_raw_log = mapped_raw_log;
+    _pub->log_file_name = log_file_name;
+    _pub->log_file_name_length = log_file_name_length;
+    _pub->log_meta_data = (aeron_logbuffer_metadata_t *)(_pub->mapped_raw_log->log_meta_data.addr);
 
     if (params->has_position)
     {
@@ -232,7 +195,7 @@ int aeron_network_publication_create(
     int64_t now_ns = aeron_clock_cached_nano_time(context->cached_clock);
 
     aeron_logbuffer_metadata_init(
-        _pub->mapped_raw_log.log_meta_data.addr,
+        _pub->mapped_raw_log->log_meta_data.addr,
         INT64_MAX,
         0,
         0,
@@ -385,28 +348,9 @@ void aeron_network_publication_close(
 
         aeron_retransmit_handler_close(&publication->retransmit_handler);
         publication->flow_control->fini(publication->flow_control);
+
+        aeron_free(publication);
     }
-}
-
-bool aeron_network_publication_free(aeron_network_publication_t *publication)
-{
-    if (NULL == publication)
-    {
-        return true;
-    }
-
-    if (!publication->raw_log_free_func(&publication->mapped_raw_log, publication->log_file_name))
-    {
-         return false;
-    }
-
-    aeron_counter_get_and_add_release(
-        publication->mapped_bytes_counter, -((int64_t) publication->mapped_raw_log.mapped_file.length));
-
-    aeron_free(publication->log_file_name);
-    aeron_free(publication);
-
-    return true;
 }
 
 static int aeron_network_publication_do_send(
@@ -576,7 +520,7 @@ int aeron_network_publication_send_data(
         size_t active_index = aeron_logbuffer_index_by_position(snd_pos, publication->position_bits_to_shift);
         int32_t padding = 0;
 
-        uint8_t *ptr = publication->mapped_raw_log.term_buffers[active_index].addr + term_offset;
+        uint8_t *ptr = publication->mapped_raw_log->term_buffers[active_index].addr + term_offset;
         const int32_t term_length_left = term_length - term_offset;
         const int32_t available = aeron_term_scanner_scan_for_availability(ptr, term_length_left, scan_limit, &padding);
 
@@ -723,7 +667,7 @@ int aeron_network_publication_resend(void *clientd, int32_t term_id, int32_t ter
         {
             offset += bytes_sent;
 
-            uint8_t *ptr = publication->mapped_raw_log.term_buffers[index].addr + offset;
+            uint8_t *ptr = publication->mapped_raw_log->term_buffers[index].addr + offset;
             int32_t term_length_left = term_length - offset;
             int32_t padding = 0;
             int32_t max_length = remaining_bytes < publication->mtu_length ?
@@ -983,17 +927,17 @@ void aeron_network_publication_clean_buffer(aeron_network_publication_t *publica
     {
         size_t dirty_index = aeron_logbuffer_index_by_position(clean_position, publication->position_bits_to_shift);
         size_t bytes_to_clean = (size_t)(position - clean_position);
-        size_t term_length = publication->mapped_raw_log.term_length;
+        size_t term_length = publication->mapped_raw_log->term_length;
         size_t term_offset = (size_t)(clean_position & publication->term_length_mask);
         size_t bytes_left_in_term = term_length - term_offset;
         size_t length = bytes_to_clean < bytes_left_in_term ? bytes_to_clean : bytes_left_in_term;
 
         memset(
-            publication->mapped_raw_log.term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
+            publication->mapped_raw_log->term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
             0,
             length - sizeof(int64_t));
 
-        volatile uint64_t *ptr = (volatile uint64_t *)(publication->mapped_raw_log.term_buffers[dirty_index].addr + term_offset);
+        volatile uint64_t *ptr = (volatile uint64_t *)(publication->mapped_raw_log->term_buffers[dirty_index].addr + term_offset);
         AERON_SET_RELEASE(*ptr, (uint64_t)0);
 
         publication->conductor_fields.clean_position = clean_position + (int64_t)length;
@@ -1073,7 +1017,7 @@ void aeron_network_publication_check_for_blocked_publisher(
         if (now_ns > (publication->conductor_fields.time_of_last_activity_ns + publication->unblock_timeout_ns))
         {
             if (aeron_logbuffer_unblocker_unblock(
-                publication->mapped_raw_log.term_buffers, publication->log_meta_data, snd_pos))
+                publication->mapped_raw_log->term_buffers, publication->log_meta_data, snd_pos))
             {
                 aeron_counter_increment_release(publication->unblocked_publications_counter);
             }
@@ -1360,7 +1304,7 @@ void aeron_network_publication_on_time_event(
             if (producer_position > sender_position)
             {
                 if (aeron_logbuffer_unblocker_unblock(
-                    publication->mapped_raw_log.term_buffers, publication->log_meta_data, sender_position))
+                    publication->mapped_raw_log->term_buffers, publication->log_meta_data, sender_position))
                 {
                     aeron_counter_increment_release(publication->unblocked_publications_counter);
                     break;

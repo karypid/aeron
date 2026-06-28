@@ -226,7 +226,7 @@ TEST_P(DriverConductorPubSubTest, shouldRejectAddPublicationIfChannelIsTooLong)
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkPublication)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSinglePublication)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
@@ -263,7 +263,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkPublica
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscription)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleSubscription)
 {
     const char *channel = GetParam()->m_channel;
 
@@ -271,7 +271,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscri
     int64_t sub_id = nextCorrelationId();
     int64_t remove_correlation_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
 
     doWorkUntilDone();
     EXPECT_EQ(GetParam()->numSubscriptions(&m_conductor.m_conductor), 1u) << "channel: " << GetParam()->m_channel;
@@ -294,7 +294,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscri
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscriptionBySession)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleSubscriptionBySession)
 {
     char channel_with_session[AERON_URI_MAX_LENGTH];
     GetParam()->channelWithParams(channel_with_session, AERON_URI_MAX_LENGTH, SESSION_ID_1, 0, 0);
@@ -303,7 +303,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscri
     int64_t sub_id = nextCorrelationId();
     int64_t remove_correlation_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel_with_session, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel_with_session, STREAM_ID_1), 0);
     doWorkUntilDone();
 
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(_, _, _));
@@ -329,7 +329,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkSubscri
 }
 
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleNetworkPublications)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultiplePublications)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
@@ -367,7 +367,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleNetworkPublications)
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveMultipleNetworkPublicationsToSameChannelSameStreamId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveMultiplePublicationsToSameChannelSameStreamId)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
@@ -405,7 +405,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveMultipleNetworkPubli
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleExclusiveNetworkPublicationsWithSameChannelSameStreamId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleExclusivePublicationsWithSameChannelSameStreamId)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
@@ -435,7 +435,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleExclusiveNetworkPubli
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkPublicationWithExplicitSessionId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSinglePublicationWithExplicitSessionId)
 {
     char channel_with_session_id[AERON_URI_MAX_LENGTH];
     GetParam()->channelWithParams(channel_with_session_id, AERON_URI_MAX_LENGTH, SESSION_ID_1, 0, 0);
@@ -467,7 +467,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddAndRemoveSingleNetworkPublica
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldAddSecondNetworkPublicationWithSpecifiedSessionIdAndSameMtu)
+TEST_P(DriverConductorPubSubTest, shouldAddSecondPublicationWithSpecifiedSessionIdAndSameMtu)
 {
     char channel[AERON_URI_MAX_LENGTH];
     GetParam()->channelWithParams(channel, AERON_URI_MAX_LENGTH, SESSION_ID_1, MTU_1, 0);
@@ -494,7 +494,7 @@ TEST_P(DriverConductorPubSubTest, shouldAddSecondNetworkPublicationWithSpecified
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondNetworkPublicationWithSpecifiedSessionIdAndDifferentMtu)
+TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondPublicationWithSpecifiedSessionIdAndDifferentMtu)
 {
     char channel1[AERON_URI_MAX_LENGTH];
     char channel2[AERON_URI_MAX_LENGTH];
@@ -517,12 +517,11 @@ TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondNetworkPublicationWithSpe
 
     doWorkUntilDone();
 
-    EXPECT_CALL(m_mockCallbacks, broadcastToClient(_, _, _));
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(AERON_RESPONSE_ON_ERROR, _, _));
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldAddSecondNetworkPublicationWithSpecifiedSessionIdAndSameTermLength)
+TEST_P(DriverConductorPubSubTest, shouldAddSecondPublicationWithSpecifiedSessionIdAndSameTermLength)
 {
     char channel[AERON_URI_MAX_LENGTH];
     GetParam()->channelWithParams(channel, AERON_URI_MAX_LENGTH, SESSION_ID_1, MTU_1, TERM_LENGTH);
@@ -548,7 +547,7 @@ TEST_P(DriverConductorPubSubTest, shouldAddSecondNetworkPublicationWithSpecified
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondNetworkPublicationWithSpecifiedSessionIdAndDifferentTermLength)
+TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondPublicationWithSpecifiedSessionIdAndDifferentTermLength)
 {
     char channel1[AERON_URI_MAX_LENGTH];
     char channel2[AERON_URI_MAX_LENGTH];
@@ -574,7 +573,7 @@ TEST_P(DriverConductorPubSubTest, shouldFailToAddSecondNetworkPublicationWithSpe
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddSingleNetworkPublicationThatAvoidCollisionWithSpecifiedSessionId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddSinglePublicationThatAvoidCollisionWithSpecifiedSessionId)
 {
     char channel_with_session_id[AERON_URI_MAX_LENGTH];
     const char *channel = GetParam()->m_channel;
@@ -690,7 +689,7 @@ TEST_P(DriverConductorPubSubTest, shouldErrorOnDuplicateExclusivePublicationWith
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleNetworkSubscriptionsWithSameChannelSameStreamId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleSubscriptionsWithSameChannelSameStreamId)
 {
     const char *channel = GetParam()->m_channel;
 
@@ -700,10 +699,10 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddMultipleNetworkSubscriptionsW
     int64_t sub_id_3 = nextCorrelationId();
     int64_t sub_id_4 = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id_1, channel, STREAM_ID_1), 0);
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id_2, channel, STREAM_ID_1), 0);
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id_3, channel, STREAM_ID_1), 0);
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id_4, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id_1, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id_2, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id_3, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id_4, channel, STREAM_ID_1), 0);
 
     doWorkUntilDone();
 
@@ -758,14 +757,14 @@ TEST_F(DriverConductorPubSubTest, shouldErrorOnAddSubscriptionWithInvalidUri)
     int64_t client_id = nextCorrelationId();
     int64_t sub_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, INVALID_URI, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, INVALID_URI, STREAM_ID_1), 0);
     doWorkUntilDone();
 
     EXPECT_CALL(m_mockCallbacks, broadcastToClient(AERON_RESPONSE_ON_ERROR, _, _)).With(IsError(sub_id));
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutNetworkPublication)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutPublication)
 {
     const char *channel = GetParam()->m_channel;
 
@@ -789,7 +788,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutNetworkPublication)
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToNotTimeoutNetworkPublicationOnKeepalive)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToNotTimeoutPublicationOnKeepalive)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
@@ -815,13 +814,13 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToNotTimeoutNetworkPublicationOnKe
     EXPECT_EQ(GetParam()->numPublications(&m_conductor.m_conductor), 1u);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutNetworkSubscription)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutSubscription)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
     int64_t sub_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
     doWorkUntilDone();
     EXPECT_TRUE(GetParam()->hasReceiveEndpointCount(&m_conductor.m_conductor, 1u));
     EXPECT_EQ(GetParam()->numSubscriptions(&m_conductor.m_conductor), 1u);
@@ -838,13 +837,13 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutNetworkSubscription)
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToNotTimeoutNetworkSubscriptionOnKeepalive)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToNotTimeoutSubscriptionOnKeepalive)
 {
     const char *channel = GetParam()->m_channel;
     int64_t client_id = nextCorrelationId();
     int64_t sub_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
     doWorkUntilDone();
     EXPECT_EQ(GetParam()->numSubscriptions(&m_conductor.m_conductor), 1u);
     readAllBroadcastsFromConductor(null_broadcast_handler);
@@ -952,7 +951,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToTimeoutReceiveChannelEndpointWit
     int64_t sub_id = nextCorrelationId();
     int64_t remove_correlation_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel, STREAM_ID_1), 0);
     doWorkUntilDone();
     EXPECT_EQ(GetParam()->numSubscriptions(&m_conductor.m_conductor), 1u);
     ASSERT_EQ(removeSubscription(client_id, remove_correlation_id, sub_id), 0);
@@ -1103,7 +1102,7 @@ TEST_P(DriverConductorPubSubTest, shouldNotAccidentallyBumpIntoExistingSessionId
     readAllBroadcastsFromConductor(mock_broadcast_handler);
 }
 
-TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddSingleNetworkSubscriptionWithSpecifiedSessionId)
+TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddSingleSubscriptionWithSpecifiedSessionId)
 {
     char channel_with_session_id[AERON_URI_MAX_LENGTH];
     GetParam()->channelWithParams(channel_with_session_id, AERON_URI_MAX_LENGTH, SESSION_ID_1, 0, 0);
@@ -1111,7 +1110,7 @@ TEST_P(DriverConductorPubSubTest, shouldBeAbleToAddSingleNetworkSubscriptionWith
     int64_t client_id = nextCorrelationId();
     int64_t sub_id = nextCorrelationId();
 
-    ASSERT_EQ(addNetworkSubscription(client_id, sub_id, channel_with_session_id, STREAM_ID_1), 0);
+    ASSERT_EQ(addSubscription(client_id, sub_id, channel_with_session_id, STREAM_ID_1), 0);
 
     doWorkUntilDone();
 

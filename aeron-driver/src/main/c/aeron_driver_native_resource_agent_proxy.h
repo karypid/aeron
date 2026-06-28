@@ -79,12 +79,23 @@ typedef struct aeron_driver_native_resource_agent_proxy_cmd_parse_channel_stct
 }
 aeron_driver_native_resource_agent_proxy_cmd_parse_channel_t;
 
-typedef struct aeron_driver_native_resource_agent_proxy_cmd_free_resource_stct
+typedef struct aeron_driver_native_resource_agent_proxy_cmd_free_log_buffer_stct
 {
     aeron_driver_native_resource_agent_proxy_cmd_t base;
-    aeron_end_of_life_resource_t resource;
+    aeron_mapped_raw_log_t *mapped_raw_log;
+    const char *log_file_name;
 }
-aeron_driver_native_resource_agent_proxy_cmd_free_resource_t;
+aeron_driver_native_resource_agent_proxy_cmd_free_log_buffer_t;
+
+typedef struct aeron_driver_native_resource_agent_proxy_cmd_map_log_buffer_stct
+{
+    aeron_driver_native_resource_agent_proxy_cmd_t base;
+    const char *log_file_name;
+    size_t term_length;
+    bool is_sparse;
+    aeron_driver_native_resource_agent_command_result_t *result;
+}
+aeron_driver_native_resource_agent_proxy_cmd_map_log_buffer_t;
 
 void aeron_driver_native_resource_agent_proxy_resolve_address(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
@@ -96,8 +107,16 @@ void aeron_driver_native_resource_agent_proxy_parse_udp_channel(
     aeron_udp_channel_async_parse_t *async_parse,
     aeron_driver_native_resource_agent_command_result_t *result);
 
-void aeron_driver_native_resource_agent_proxy_free_resource(
+void aeron_driver_native_resource_agent_proxy_free_log_buffer(
     aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
-    aeron_end_of_life_resource_t *resource);
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    const char *log_file_name);
+
+void aeron_driver_native_resource_agent_proxy_map_log_buffer(
+    aeron_driver_native_resource_agent_proxy_t *native_resource_agent_proxy,
+    const char *log_file_name,
+    size_t term_length,
+    bool is_sparse,
+    aeron_driver_native_resource_agent_command_result_t *result);
 
 #endif //AERON_DRIVER_NATIVE_RESOURCE_AGENT_PROXY_H

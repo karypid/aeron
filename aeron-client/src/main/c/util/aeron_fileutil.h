@@ -117,7 +117,6 @@ size_t aeron_temp_filename(char *filename, size_t length);
 const char *aeron_temp_dir(const char *dir_template);
 
 typedef int (*aeron_raw_log_map_func_t)(aeron_mapped_raw_log_t *, const char *, bool, uint64_t, uint64_t);
-typedef int (*aeron_raw_log_close_func_t)(aeron_mapped_raw_log_t *, const char *filename);
 typedef bool (*aeron_raw_log_free_func_t)(aeron_mapped_raw_log_t *, const char *filename);
 
 int aeron_raw_log_map(
@@ -128,8 +127,6 @@ int aeron_raw_log_map(
     uint64_t page_size);
 
 int aeron_raw_log_map_existing(aeron_mapped_raw_log_t *mapped_raw_log, const char *path, bool pre_touch);
-
-int aeron_raw_log_close(aeron_mapped_raw_log_t *mapped_raw_log, const char *filename);
 
 bool aeron_raw_log_free(aeron_mapped_raw_log_t *mapped_raw_log, const char *filename);
 

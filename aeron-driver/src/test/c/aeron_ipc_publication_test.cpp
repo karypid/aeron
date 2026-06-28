@@ -27,9 +27,17 @@ int aeron_driver_ensure_dir_is_recreated(aeron_driver_context_t *context);
 }
 
 #define CAPACITY (32 * 1024)
+#define TERM_BUFFER_LENGTH UINT32_C(64 * 1024)
 
 typedef std::array<std::uint8_t, CAPACITY> buffer_t;
 typedef std::array<std::uint8_t, 4 * CAPACITY> buffer_4x_t;
+
+typedef struct log_buffer_info_stct
+{
+    aeron_mapped_raw_log_t mapped_raw_log;
+    char log_file_name[AERON_MAX_PATH];
+}
+log_buffer_info_t;
 
 class IpcPublicationTest : public testing::Test
 {
@@ -63,7 +71,12 @@ protected:
         for (auto publication : m_publications)
         {
             aeron_ipc_publication_close(&m_counters_manager, publication);
-            aeron_ipc_publication_free(publication);
+        }
+
+        for (auto log_buffer : m_log_buffers)
+        {
+            m_context->raw_log_free_func(&log_buffer->mapped_raw_log, log_buffer->log_file_name);
+            aeron_free(log_buffer);
         }
 
         aeron_system_counters_close(&m_system_counters);
@@ -84,6 +97,7 @@ protected:
 
         int64_t client_id = 42;
         bool is_exclusive = false;
+        bool is_sparse = true;
 
         pub_pos_position.counter_id = aeron_counter_publisher_position_allocate(
             &m_counters_manager,
@@ -107,7 +121,39 @@ protected:
         pub_lmt_position.value_addr = aeron_counters_manager_addr(
             &m_counters_manager, pub_lmt_position.counter_id);
 
+        log_buffer_info_t *log_buffer_info;
+        if (aeron_alloc((void **)&log_buffer_info, sizeof(log_buffer_info_t)) < 0)
+        {
+            return nullptr;
+        }
+
+        int path_length = aeron_ipc_publication_location(
+            log_buffer_info->log_file_name,
+            sizeof(log_buffer_info->log_file_name),
+            m_context->aeron_dir,
+            registration_id);
+        if (path_length < 0)
+        {
+            aeron_free(log_buffer_info);
+            return nullptr;
+        }
+
+        if (m_context->raw_log_map_func(
+            &log_buffer_info->mapped_raw_log,
+            log_buffer_info->log_file_name,
+            is_sparse,
+            TERM_BUFFER_LENGTH,
+            m_context->file_page_size) < 0)
+        {
+            aeron_free(log_buffer_info);
+            return nullptr;
+        }
+
+        m_log_buffers.push_back(log_buffer_info);
+
         aeron_driver_uri_publication_params_t params = {};
+        params.term_length = TERM_BUFFER_LENGTH;
+        params.is_sparse = is_sparse;
 
         aeron_ipc_publication_t *publication = nullptr;
         if (aeron_ipc_publication_create(
@@ -123,7 +169,10 @@ protected:
             is_exclusive,
             &m_system_counters,
             uri_length,
-            uri) < 0)
+            uri,
+            &log_buffer_info->mapped_raw_log,
+            static_cast<size_t>(path_length),
+            log_buffer_info->log_file_name) < 0)
         {
             return nullptr;
         }
@@ -143,11 +192,12 @@ private:
     AERON_DECL_ALIGNED(buffer_4x_t m_counter_meta_buffer, 16) = {};
     AERON_DECL_ALIGNED(buffer_t m_error_log_buffer, 16) = {};
     std::vector<aeron_ipc_publication_t *> m_publications;
+    std::vector<log_buffer_info_t *> m_log_buffers;
 };
 
 TEST_F(IpcPublicationTest, shouldCreatePublication)
 {
-    auto channel = "aeron:ipc|alias=test|mtu=2048";
+    auto channel = "aeron:ipc?alias=test|mtu=2048";
     auto channel_length = strlen(channel);
 
     aeron_ipc_publication_t *publication = createPublication(channel);
@@ -158,46 +208,3 @@ TEST_F(IpcPublicationTest, shouldCreatePublication)
     EXPECT_FALSE(publication->is_exclusive);
 }
 
-TEST_F(IpcPublicationTest, shouldReturnStorageSpaceErrorIfNotEnoughStorageSpaceAvailable)
-{
-    m_context->usable_fs_space_func = [](const char* path) -> uint64_t
-    {
-        return 2049;
-    };
-    m_context->perform_storage_checks = true;
-
-    aeron_ipc_publication_t *publication = createPublication("aeron:ipc");
-
-    ASSERT_EQ(nullptr, publication) << aeron_errmsg();
-    EXPECT_EQ(-AERON_ERROR_CODE_STORAGE_SPACE, aeron_errcode());
-    auto expected_error_text =
-        std::string("insufficient usable storage for new log of length=4096 usable=2049 in ")
-            .append(m_context->aeron_dir);
-    EXPECT_NE(std::string::npos, std::string(aeron_errmsg()).find(expected_error_text));
-}
-
-TEST_F(IpcPublicationTest, shouldWarnIfRemainingStorageSpaceIsLow)
-{
-    m_context->usable_fs_space_func = [](const char *path) -> uint64_t
-    {
-        return 1000000;
-    };
-    m_context->low_file_store_warning_threshold = 2020202020ULL;
-    m_context->perform_storage_checks = true;
-
-    aeron_ipc_publication_t *publication = createPublication("aeron:ipc");
-
-    ASSERT_NE(nullptr, publication) << aeron_errmsg();
-    EXPECT_EQ(0, aeron_errcode());
-    auto errors_list = m_context->error_log->observation_list;
-    EXPECT_NE(nullptr, errors_list);
-    EXPECT_NE(0, errors_list->num_observations);
-    auto last_error = errors_list->observations[errors_list->num_observations - 1];
-    EXPECT_EQ(-AERON_ERROR_CODE_STORAGE_SPACE, last_error.error_code);
-    auto error_text = std::string(last_error.description);
-    EXPECT_EQ(error_text.size(), last_error.description_length);
-    auto expected_warning =
-        std::string("WARNING: space is running low: threshold=2020202020 usable=1000000 in ")
-            .append(m_context->aeron_dir);
-    EXPECT_NE(std::string::npos, error_text.find(expected_warning));
-}

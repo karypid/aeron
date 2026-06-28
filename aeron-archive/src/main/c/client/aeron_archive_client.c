@@ -2456,7 +2456,7 @@ int aeron_archive_initiate_replay_via_response_channel(
         goto cleanup;
     }
 
-    int64_t publication_id = aeron_async_add_exclusive_exclusive_publication_get_registration_id(async);
+    int64_t publication_id = aeron_async_add_exclusive_publication_get_registration_id(async);
 
     aeron_exclusive_publication_t *exclusive_publication;
     if (aeron_async_add_exclusive_publication_poll(&exclusive_publication, async) < 0)

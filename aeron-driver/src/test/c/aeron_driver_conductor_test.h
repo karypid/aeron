@@ -130,18 +130,12 @@ static int test_malloc_raw_log_map(
     return 0;
 }
 
-static int test_malloc_raw_log_close(aeron_mapped_raw_log_t *log, const char *filename)
-{
-    free(log->mapped_file.addr);
-    log->mapped_file.addr = nullptr;
-    return 0;
-}
-
 static bool test_malloc_raw_log_free(aeron_mapped_raw_log_t *log, const char *filename)
 {
     if (free_map_raw_log)
     {
-        test_malloc_raw_log_close(log, filename);
+        free(log->mapped_file.addr);
+        log->mapped_file.addr = nullptr;
         return true;
     }
     return false;
@@ -229,7 +223,6 @@ struct TestDriverContext
         /* control files */
         m_context->usable_fs_space_func = test_uint64_max_usable_fs_space;
         m_context->raw_log_map_func = test_malloc_raw_log_map;
-        m_context->raw_log_close_func = test_malloc_raw_log_close;
         m_context->raw_log_free_func = test_malloc_raw_log_free;
 
         aeron_driver_context_set_conductor_cycle_threshold_ns(m_context, TEST_CONDUCTOR_CYCLE_TIME_THRESHOLD);
@@ -439,16 +432,16 @@ public:
 
     int addIpcSubscription(int64_t client_id, int64_t correlation_id, int32_t stream_id, int64_t registration_id)
     {
-        return addNetworkSubscription(client_id, correlation_id, AERON_IPC_CHANNEL, stream_id);
+        return addSubscription(client_id, correlation_id, AERON_IPC_CHANNEL, stream_id);
     }
 
     int addSubscription(
         int64_t client_id, int64_t correlation_id, std::string &channel, int32_t stream_id, int64_t registration_id)
     {
-        return addNetworkSubscription(client_id, correlation_id, channel.c_str(), stream_id);
+        return addSubscription(client_id, correlation_id, channel.c_str(), stream_id);
     }
 
-    int addNetworkSubscription(int64_t client_id, int64_t correlation_id, const char *channel, int32_t stream_id)
+    int addSubscription(int64_t client_id, int64_t correlation_id, const char *channel, int32_t stream_id)
     {
         auto *cmd = reinterpret_cast<aeron_subscription_command_t *>(m_command_buffer);
 
@@ -466,7 +459,7 @@ public:
         int64_t client_id, int64_t correlation_id, const char *channel, int32_t stream_id, int64_t registration_id)
     {
         std::string channel_str(AERON_SPY_PREFIX + std::string(channel));
-        return addNetworkSubscription(client_id, correlation_id, channel_str.c_str(), stream_id);
+        return addSubscription(client_id, correlation_id, channel_str.c_str(), stream_id);
     }
 
     int removeSubscription(int64_t client_id, int64_t correlation_id, int64_t registration_id)
@@ -666,6 +659,8 @@ public:
         fill_sockaddr_ipv4(&cmd.control_address, CONTROL_IP_ADDR, CONTROL_UDP_PORT);
 
         aeron_driver_conductor_on_create_publication_image(&m_conductor.m_conductor, &cmd);
+
+        doWorkUntilDone();
     }
 
 protected:

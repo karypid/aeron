@@ -26,7 +26,7 @@ typedef struct aeron_driver_native_resource_agent_stct
     aeron_driver_native_resource_agent_proxy_t native_resource_agent_proxy;
     aeron_driver_context_t *context;
     aeron_name_resolver_t name_resolver;
-    aeron_deque_t end_of_life_queue;
+    aeron_deque_t log_buffers_queue;
 }
 aeron_driver_native_resource_agent_t;
 
@@ -45,7 +45,10 @@ void aeron_driver_native_resource_agent_on_resolve_address(
 void aeron_driver_native_resource_agent_on_parse_udp_channel(
     aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
 
-void aeron_driver_native_resource_agent_on_free_resource(
+void aeron_driver_native_resource_agent_on_free_log_buffer(
+    aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
+
+void aeron_driver_native_resource_agent_on_map_log_buffer(
     aeron_driver_native_resource_agent_t *native_resource_agent, aeron_driver_native_resource_agent_proxy_cmd_t *cmd);
 
 #endif //AERON_DRIVER_NATIVE_RESOURCE_AGENT_H

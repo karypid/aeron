@@ -235,7 +235,7 @@ TEST_P(CSystemTest, shouldAddAndCloseExclusivePublication)
     ASSERT_TRUE(subscription) << aeron_errmsg();
 
     ASSERT_EQ(aeron_async_add_exclusive_publication(&async, m_aeron, std::get<0>(GetParam()), STREAM_ID), 0);
-    std::int64_t registration_id = aeron_async_add_exclusive_exclusive_publication_get_registration_id(async);
+    std::int64_t registration_id = aeron_async_add_exclusive_publication_get_registration_id(async);
 
     aeron_exclusive_publication_t *publication = awaitExclusivePublicationOrError(async);
     ASSERT_TRUE(publication) << aeron_errmsg();

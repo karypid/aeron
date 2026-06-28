@@ -42,6 +42,13 @@ int aeron_driver_ensure_dir_is_recreated(aeron_driver_context_t *context);
 typedef std::array<std::uint8_t, CAPACITY> buffer_t;
 typedef std::array<std::uint8_t, 4 * CAPACITY> buffer_4x_t;
 
+typedef struct log_buffer_info_stct
+{
+    aeron_mapped_raw_log_t mapped_raw_log;
+    char log_file_name[AERON_MAX_PATH];
+}
+log_buffer_info_t;
+
 void verify_conductor_cmd_function(int32_t msg_type_id, const void *item, size_t length, void *clientd)
 {
     auto *cmd = (aeron_command_base_t *)item;
@@ -113,7 +120,12 @@ protected:
         for (auto image : m_images)
         {
             aeron_publication_image_close(&m_counters_manager, image);
-            aeron_publication_image_free(image);
+        }
+
+        for (auto log_buffer : m_log_buffers)
+        {
+            m_context->raw_log_free_func(&log_buffer->mapped_raw_log, log_buffer->log_file_name);
+            aeron_free(log_buffer);
         }
 
         for (auto endpoint : m_endpoints)
@@ -198,7 +210,8 @@ protected:
         int32_t session_id,
         int64_t correlation_id = 0,
         bool is_reliable = true,
-        bool treat_as_multicast = false)
+        bool treat_as_multicast = false,
+        bool is_sparse = true)
     {
         aeron_publication_image_t *image;
         aeron_congestion_control_strategy_t *congestion_control_strategy;
@@ -235,6 +248,37 @@ protected:
         aeron_driver_conductor_t conductor; // the conductor struct is only used for its context
         conductor.context = m_context;
 
+
+        log_buffer_info_t *log_buffer_info;
+        if (aeron_alloc((void **)&log_buffer_info, sizeof(log_buffer_info_t)) < 0)
+        {
+            return nullptr;
+        }
+
+        int path_length = aeron_publication_image_location(
+            log_buffer_info->log_file_name,
+            sizeof(log_buffer_info->log_file_name),
+            m_context->aeron_dir,
+            correlation_id);
+        if (path_length < 0)
+        {
+            aeron_free(log_buffer_info);
+            return nullptr;
+        }
+
+        if (m_context->raw_log_map_func(
+            &log_buffer_info->mapped_raw_log,
+            log_buffer_info->log_file_name,
+            is_sparse,
+            TERM_BUFFER_SIZE,
+            m_context->file_page_size) < 0)
+        {
+            aeron_free(log_buffer_info);
+            return nullptr;
+        }
+
+        m_log_buffers.push_back(log_buffer_info);
+
         if (aeron_publication_image_create(
             &image,
             endpoint,
@@ -257,9 +301,12 @@ protected:
             UINT8_C(0),
             &m_loss_reporter,
             is_reliable,
-            true,
+            is_sparse,
             treat_as_multicast,
-            &m_system_counters) < 0)
+            &m_system_counters,
+            &log_buffer_info->mapped_raw_log,
+            static_cast<size_t>(path_length),
+            log_buffer_info->log_file_name) < 0)
         {
             congestion_control_strategy->fini(congestion_control_strategy);
             return nullptr;
@@ -319,6 +366,7 @@ protected:
     std::vector<aeron_receive_channel_endpoint_t *> m_endpoints;
     std::vector<aeron_udp_channel_t *> m_channels_for_tear_down;
     std::vector<aeron_publication_image_t *> m_images;
+    std::vector<log_buffer_info_t *> m_log_buffers;
 };
 
 #endif //AERON_AERON_RECEIVER_TEST_H

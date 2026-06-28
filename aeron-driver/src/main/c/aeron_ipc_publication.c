@@ -15,7 +15,6 @@
  */
 
 #include <string.h>
-#include <errno.h>
 #include <inttypes.h>
 #include "concurrent/aeron_counters_manager.h"
 #include "concurrent/aeron_logbuffer_unblocker.h"
@@ -38,24 +37,14 @@ int aeron_ipc_publication_create(
     bool is_exclusive,
     aeron_system_counters_t *system_counters,
     size_t channel_length,
-    const char *channel)
+    const char *channel,
+    aeron_mapped_raw_log_t *mapped_raw_log,
+    size_t log_file_name_length,
+    const char *log_file_name)
 {
-    char path[AERON_MAX_PATH];
-    int path_length = aeron_ipc_publication_location(path, sizeof(path), context->aeron_dir, registration_id);
-    if (path_length < 0)
-    {
-        AERON_APPEND_ERR("%s", "Could not resolve IPC publication file path");
-        return -1;
-    }
     aeron_ipc_publication_t *_pub = NULL;
-    const uint64_t log_length = aeron_logbuffer_compute_log_length(params->term_length, context->file_page_size);
 
     *publication = NULL;
-
-    if (aeron_driver_context_run_storage_checks(context, log_length) < 0)
-    {
-        return -1;
-    }
 
     if (aeron_alloc((void **)&_pub, sizeof(aeron_ipc_publication_t)) < 0)
     {
@@ -63,46 +52,21 @@ int aeron_ipc_publication_create(
         return -1;
     }
 
-    _pub->log_file_name = NULL;
-    if (aeron_alloc((void **)(&_pub->log_file_name), (size_t)path_length + 1) < 0)
-    {
-        aeron_free(_pub);
-        AERON_APPEND_ERR("%s", "Could not allocate IPC publication log_file_name");
-        return -1;
-    }
-
     _pub->channel = NULL;
     if (aeron_alloc((void **)(&_pub->channel), (size_t)channel_length + 1) < 0)
     {
-        aeron_free(_pub->log_file_name);
         aeron_free(_pub);
         AERON_APPEND_ERR("%s", "Could not allocate IPC publication channel");
         return -1;
     }
 
-    if (context->raw_log_map_func(
-        &_pub->mapped_raw_log, path, params->is_sparse, params->term_length, context->file_page_size) < 0)
-    {
-        aeron_free(_pub->log_file_name);
-        aeron_free(_pub->channel);
-        aeron_free(_pub);
-        AERON_APPEND_ERR("error mapping IPC raw log: %s", path);
-        return -1;
-    }
-
-    _pub->mapped_bytes_counter = aeron_system_counter_addr(
-        system_counters, AERON_SYSTEM_COUNTER_BYTES_CURRENTLY_MAPPED);
-    aeron_counter_get_and_add_release(_pub->mapped_bytes_counter, (int64_t) log_length);
-
-    _pub->raw_log_close_func = context->raw_log_close_func;
-    _pub->raw_log_free_func = context->raw_log_free_func;
     _pub->log.untethered_subscription_state_change = context->log.untethered_subscription_on_state_change;
     _pub->log.publication_revoke = context->log.publication_revoke;
 
-    strncpy(_pub->log_file_name, path, (size_t)path_length);
-    _pub->log_file_name[path_length] = '\0';
-    _pub->log_file_name_length = (size_t)path_length;
-    _pub->log_meta_data = (aeron_logbuffer_metadata_t *)(_pub->mapped_raw_log.log_meta_data.addr);
+    _pub->mapped_raw_log = mapped_raw_log;
+    _pub->log_file_name = log_file_name;
+    _pub->log_file_name_length = log_file_name_length;
+    _pub->log_meta_data = (aeron_logbuffer_metadata_t *)(_pub->mapped_raw_log->log_meta_data.addr);
 
     strncpy(_pub->channel, channel, channel_length);
     _pub->channel[channel_length] = '\0';
@@ -141,7 +105,7 @@ int aeron_ipc_publication_create(
     int64_t now_ns = aeron_clock_cached_nano_time(context->cached_clock);
 
     aeron_logbuffer_metadata_init(
-        _pub->mapped_raw_log.log_meta_data.addr,
+        _pub->mapped_raw_log->log_meta_data.addr,
         INT64_MAX,
         0,
         0,
@@ -193,7 +157,7 @@ int aeron_ipc_publication_create(
     _pub->conductor_fields.trip_limit = 0;
     _pub->conductor_fields.time_of_last_consumer_position_change_ns = now_ns;
     _pub->conductor_fields.state = AERON_IPC_PUBLICATION_STATE_ACTIVE;
-    _pub->conductor_fields.refcnt = 1;
+    _pub->conductor_fields.refcnt = 0;
     _pub->session_id = session_id;
     _pub->stream_id = stream_id;
     _pub->pub_lmt_position.counter_id = pub_lmt_position->counter_id;
@@ -245,28 +209,8 @@ void aeron_ipc_publication_close(aeron_counters_manager_t *counters_manager, aer
         aeron_free(subscribable->array);
 
         aeron_free(publication->channel);
+        aeron_free(publication);
     }
-}
-
-bool aeron_ipc_publication_free(aeron_ipc_publication_t *publication)
-{
-    if (NULL == publication)
-    {
-        return true;
-    }
-
-    if (!publication->raw_log_free_func(&publication->mapped_raw_log, publication->log_file_name))
-    {
-        return false;
-    }
-
-    aeron_counter_get_and_add_release(
-        publication->mapped_bytes_counter, -((int64_t) publication->mapped_raw_log.mapped_file.length));
-
-    aeron_free(publication->log_file_name);
-    aeron_free(publication);
-
-    return true;
 }
 
 void aeron_ipc_publication_reject(
@@ -390,17 +334,17 @@ void aeron_ipc_publication_clean_buffer(aeron_ipc_publication_t *publication, in
     {
         size_t dirty_index = aeron_logbuffer_index_by_position(clean_position, publication->position_bits_to_shift);
         size_t bytes_to_clean = (size_t)(position - clean_position);
-        size_t term_length = publication->mapped_raw_log.term_length;
+        size_t term_length = publication->mapped_raw_log->term_length;
         size_t term_offset = (size_t)(clean_position & (term_length - 1));
         size_t bytes_left_in_term = term_length - term_offset;
         size_t length = bytes_to_clean < bytes_left_in_term ? bytes_to_clean : bytes_left_in_term;
 
         memset(
-            publication->mapped_raw_log.term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
+            publication->mapped_raw_log->term_buffers[dirty_index].addr + term_offset + sizeof(int64_t),
             0,
             length - sizeof(int64_t));
 
-        volatile uint64_t *ptr = (volatile uint64_t *)(publication->mapped_raw_log.term_buffers[dirty_index].addr + term_offset);
+        volatile uint64_t *ptr = (volatile uint64_t *)(publication->mapped_raw_log->term_buffers[dirty_index].addr + term_offset);
         AERON_SET_RELEASE(*ptr, (uint64_t)0);
 
         publication->conductor_fields.clean_position = (int64_t)(clean_position + length);
@@ -633,7 +577,7 @@ void aeron_ipc_publication_on_time_event(
                 }
             }
             else if (aeron_logbuffer_unblocker_unblock(
-                publication->mapped_raw_log.term_buffers,
+                publication->mapped_raw_log->term_buffers,
                 publication->log_meta_data,
                 publication->conductor_fields.consumer_position))
             {
@@ -715,7 +659,7 @@ void aeron_ipc_publication_check_for_blocked_publisher(
             (publication->conductor_fields.time_of_last_consumer_position_change_ns + publication->unblock_timeout_ns))
         {
             if (aeron_logbuffer_unblocker_unblock(
-                publication->mapped_raw_log.term_buffers,
+                publication->mapped_raw_log->term_buffers,
                 publication->log_meta_data,
                 publication->conductor_fields.consumer_position))
             {

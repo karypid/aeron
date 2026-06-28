@@ -292,7 +292,7 @@ public:
     inline std::int64_t addExclusivePublication(const std::string &channel, std::int32_t streamId)
     {
         AsyncAddExclusivePublication *addExclusivePublication = addExclusivePublicationAsync(channel, streamId);
-        std::int64_t registrationId = aeron_async_add_exclusive_exclusive_publication_get_registration_id(
+        std::int64_t registrationId = aeron_async_add_exclusive_publication_get_registration_id(
             addExclusivePublication);
 
         std::lock_guard<std::recursive_mutex> lock(m_adminLock);
