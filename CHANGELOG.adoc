@@ -70,7 +70,7 @@ mutated the array that the sender thread was iterating over.
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
-* **[Java]** Upgrade to `Shadow` 9.4.2.
+* **[Java]** Upgrade to `Shadow` 9.4.3.
 * **[Java]** Upgrade to `ASM` 9.10.1.
 
 == 1.51.0 (2026-04-28)
