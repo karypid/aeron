@@ -67,11 +67,19 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[Driver]** Do not re-resolve control/endpoint addresses if the corresponding endpoint is not active (i.e. closing).
 * **[Driver]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing spies
 mutated the array that the sender thread was iterating over.
+* **[Driver/Java]** Remove `INIT_IN_PROGRESS` stream interest marker if `PublicationImage` creation fails, i.e. allow
+image creation to be retried.
+* **[Driver/C]** Do not apply `IMAGE_COOL_DOWN` if EOS was received (i.e. align with `DataPacketDispatcher`).
+* **[C/Archive Client]** Filter signal events by session when polling for recording descriptors so only signals for the
+client's session are seen.
+* **[C/Archive Client]** Correctly pass the `UNKNOWN_REPLICATION` error code when polling for responses that allow for
+a specific error.
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.10.
 * **[Java]** Upgrade to `Shadow` 9.4.3.
 * **[Java]** Upgrade to `ASM` 9.10.1.
+* **[C]** Upgrade to `HdrHistogram` 0.11.10.
 
 == 1.51.0 (2026-04-28)
 
