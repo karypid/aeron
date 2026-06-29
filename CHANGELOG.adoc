@@ -67,7 +67,7 @@ image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
 * **[Driver]** Do not re-resolve control/endpoint addresses if the corresponding endpoint is not active (i.e. closing).
 * **[Driver]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing spies
 mutated the array that the sender thread was iterating over.
-* **[Java]** Upgrade to `Gradle` 9.6.0.
+* **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.0.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.9.
 * **[Java]** Upgrade to `Shadow` 9.4.2.
