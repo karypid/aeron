@@ -395,7 +395,7 @@ public class ResponseChannelsTest
 
     @Test
     @InterruptAfter(10)
-    void shouldUseResponseCorrelationIdAsAPublicationMatchingCriteria()
+    void shouldUseResponseCorrelationIdAsAPublicationMatchingCriteria0()
     {
         try (Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver1.aeronDirectoryName()));
             Subscription sub = aeron.addSubscription("aeron:udp?endpoint=localhost:10000", 10001);
@@ -408,7 +408,12 @@ public class ResponseChannelsTest
 
             assertEquals(pubA.originalRegistrationId(), pubB.originalRegistrationId());
         }
+    }
 
+    @Test
+    @InterruptAfter(10)
+    void shouldUseResponseCorrelationIdAsAPublicationMatchingCriteria1()
+    {
         try (Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver1.aeronDirectoryName()));
             Subscription sub = aeron.addSubscription("aeron:udp?endpoint=localhost:10000", 10001);
             Subscription rspSub = aeron.addSubscription("aeron:udp?control-mode=response", 10001);
@@ -423,7 +428,12 @@ public class ResponseChannelsTest
 
             assertEquals(pubA.originalRegistrationId(), pubB.originalRegistrationId());
         }
+    }
 
+    @Test
+    @InterruptAfter(10)
+    void shouldUseResponseCorrelationIdAsAPublicationMatchingCriteria2()
+    {
         try (Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver1.aeronDirectoryName()));
             Subscription sub = aeron.addSubscription("aeron:udp?endpoint=localhost:10000", 10001);
             Subscription rspSubA = aeron.addSubscription("aeron:udp?control-mode=response", 10001);
