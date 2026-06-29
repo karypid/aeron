@@ -31,6 +31,8 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 
 import static io.aeron.driver.Configuration.PENDING_SETUPS_TIMEOUT_NS;
+import static io.aeron.driver.DataPacketDispatcher.SessionState.INIT_IN_PROGRESS;
+import static io.aeron.driver.DataPacketDispatcher.SessionState.ON_COOL_DOWN;
 import static io.aeron.driver.status.SystemCounterDescriptor.BYTES_RECEIVED;
 import static io.aeron.driver.status.SystemCounterDescriptor.RESOLUTION_CHANGES;
 
@@ -254,7 +256,12 @@ public final class Receiver implements Agent
 
     void onRemoveCoolDown(final ReceiveChannelEndpoint channelEndpoint, final int sessionId, final int streamId)
     {
-        channelEndpoint.dispatcher().removeCoolDown(sessionId, streamId);
+        channelEndpoint.dispatcher().removeSessionInterestByState(sessionId, streamId, ON_COOL_DOWN);
+    }
+
+    void onRemoveInitInProgress(final ReceiveChannelEndpoint channelEndpoint, final int sessionId, final int streamId)
+    {
+        channelEndpoint.dispatcher().removeSessionInterestByState(sessionId, streamId, INIT_IN_PROGRESS);
     }
 
     void onAddDestination(final ReceiveChannelEndpoint channelEndpoint, final ReceiveDestinationTransport transport)

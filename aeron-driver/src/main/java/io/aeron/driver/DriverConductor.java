@@ -70,6 +70,7 @@ import org.agrona.concurrent.status.UnsafeBufferPosition;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -419,123 +420,6 @@ public final class DriverConductor implements Agent
     {
         scheduleClientCommand(new AddNetworkPublicationCommand(
             channel, streamId, correlationId, clientId, isExclusive));
-    }
-
-    void newPublicationImage(
-        final int sessionId,
-        final int streamId,
-        final int initialTermId,
-        final int activeTermId,
-        final int termOffset,
-        final int termBufferLength,
-        final int senderMtuLength,
-        final int transportIndex,
-        final short flags,
-        final InetSocketAddress controlAddress,
-        final InetSocketAddress sourceAddress,
-        final ReceiveChannelEndpoint channelEndpoint,
-        final long registrationId,
-        final SubscriptionParams subscriptionParams,
-        final RawLog rawLog)
-    {
-        final long joinPosition = computePosition(
-            activeTermId, termOffset, LogBufferDescriptor.positionBitsToShift(termBufferLength), initialTermId);
-        final ArrayList<SubscriberPosition> subscriberPositions =
-            createSubscriberPositions(sessionId, streamId, channelEndpoint, joinPosition);
-        if (subscriberPositions.isEmpty())
-        {
-            nativeResourceAgentProxy.freeLogBuffer(rawLog); // the file will not be used
-            return;
-        }
-
-        final UdpChannel subscriptionChannel = channelEndpoint.subscriptionUdpChannel();
-        final SubscriptionLink subscription = subscriberPositions.get(0).subscription();
-        final boolean isMulticastSemantics =
-            isMulticastSemantics(subscriptionChannel, subscription.group(), flags);
-        final boolean isReliable = subscription.isReliable();
-
-        CongestionControl congestionControl = null;
-        UnsafeBufferPosition hwmPos = null, rcvPos = null;
-        AtomicCounter rcvNaksSent = null;
-        try
-        {
-            congestionControl = ctx.congestionControlSupplier().newInstance(
-                registrationId,
-                subscriptionChannel,
-                streamId,
-                sessionId,
-                termBufferLength,
-                senderMtuLength,
-                controlAddress,
-                sourceAddress,
-                ctx.receiverCachedNanoClock(),
-                ctx,
-                countersManager);
-
-            final String uri = subscription.channel();
-            final long clientId = subscription.aeronClient().clientId();
-            hwmPos = ReceiverHwm.allocate(
-                tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
-            rcvPos = ReceiverPos.allocate(
-                tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
-            rcvNaksSent = ReceiverNaksSent.allocate(
-                tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
-
-            final String sourceIdentity = Configuration.sourceIdentity(sourceAddress);
-
-            final PublicationImage image = new PublicationImage(
-                registrationId,
-                ctx,
-                channelEndpoint,
-                transportIndex,
-                controlAddress,
-                sessionId,
-                streamId,
-                initialTermId,
-                activeTermId,
-                termOffset,
-                flags,
-                isReliable,
-                subscriptionParams.untetheredWindowLimitTimeoutNs,
-                subscriptionParams.untetheredLingerTimeoutNs,
-                subscriptionParams.untetheredRestingTimeoutNs,
-                rawLog,
-                resolveDelayGenerator(ctx, subscriptionChannel, isMulticastSemantics, isReliable),
-                subscriberPositions,
-                hwmPos,
-                rcvPos,
-                rcvNaksSent,
-                sourceIdentity,
-                congestionControl);
-
-            channelEndpoint.incRefImages();
-            publicationImages.add(image);
-            receiverProxy.newPublicationImage(channelEndpoint, image);
-
-            for (final SubscriberPosition position : subscriberPositions)
-            {
-                position.addLink(image);
-
-                final int positionCounterId = position.positionCounterId();
-                countersManager.setCounterReferenceId(positionCounterId, registrationId);
-
-                clientProxy.onAvailableImage(
-                    registrationId,
-                    streamId,
-                    sessionId,
-                    position.subscription().registrationId(),
-                    positionCounterId,
-                    rawLog.fileName(),
-                    sourceIdentity);
-            }
-        }
-        catch (final Exception ex)
-        {
-            recordError(ex);
-            subscriberPositions.forEach((subscriberPosition) -> subscriberPosition.position().close());
-            CloseHelper.quietCloseAll(congestionControl, hwmPos, rcvPos, rcvNaksSent);
-            nativeResourceAgentProxy.freeLogBuffer(rawLog);
-        }
     }
 
     private PublicationImage findPublicationImage(final long correlationId)
@@ -1276,6 +1160,11 @@ public final class DriverConductor implements Agent
     private StreamInterest findSubscribers(
         final ReceiveChannelEndpoint channelEndpoint, final int sessionId, final int streamId, final short flags)
     {
+        if (ChannelEndpointStatus.ACTIVE != channelEndpoint.status())
+        {
+            return null;
+        }
+
         long regId = Long.MAX_VALUE;
         boolean hasSubscribers = false;
         boolean sparse = false, reliable = false, multicastSemantics = false;
@@ -1307,14 +1196,18 @@ public final class DriverConductor implements Agent
         return null;
     }
 
-    private ArrayList<SubscriberPosition> createSubscriberPositions(
+    private List<SubscriberPosition> createSubscriberPositions(
         final int sessionId,
         final int streamId,
         final ReceiveChannelEndpoint channelEndpoint,
         final long joinPosition)
     {
-        final ArrayList<SubscriberPosition> subscriberPositions = new ArrayList<>();
+        if (ChannelEndpointStatus.ACTIVE != channelEndpoint.status())
+        {
+            return List.of();
+        }
 
+        final ArrayList<SubscriberPosition> subscriberPositions = new ArrayList<>();
         for (final SubscriptionLink subscription : subscriptionLinks)
         {
             if (subscription.matches(channelEndpoint, streamId, sessionId))
@@ -3391,10 +3284,11 @@ public final class DriverConductor implements Agent
         private final InetSocketAddress controlAddress;
         private final InetSocketAddress sourceAddress;
         private final ReceiveChannelEndpoint channelEndpoint;
-        private final SubscriptionParams subscriptionParams;
+        private SubscriptionParams subscriptionParams;
         private CommandResult<RawLog> imageLogResult;
         private long registrationId;
-        private State state;
+        private State state = State.VALIDATE;
+        private RawLog rawLog;
 
         CreatePublicationImageCommand(
             final int sessionId,
@@ -3422,76 +3316,212 @@ public final class DriverConductor implements Agent
             this.controlAddress = controlAddress;
             this.sourceAddress = sourceAddress;
             this.channelEndpoint = channelEndpoint;
+        }
 
-            Configuration.validateMtuLength(senderMtuLength);
-
-            subscriptionParams = SubscriptionParams.getSubscriptionParams(
-                channelEndpoint.subscriptionUdpChannel().channelUri(), ctx, termBufferLength);
-
-            Configuration.validateInitialWindowLength(subscriptionParams.receiverWindowLength, senderMtuLength);
-
-            final StreamInterest streamInterest = findSubscribers(channelEndpoint, sessionId, streamId, flags);
-
-            if (null == streamInterest)
+        public void close()
+        {
+            if (null != rawLog)
             {
-                state = State.DONE;
-            }
-            else
-            {
-                registrationId = toDriverCommands.nextCorrelationId();
-
-                imageLogResult = nativeResourceAgentProxy.newPublicationImageLog(
-                    sessionId,
-                    streamId,
-                    initialTermId,
-                    termOffset,
-                    termBufferLength,
-                    senderMtuLength,
-                    channelEndpoint,
-                    registrationId,
-                    subscriptionParams,
-                    streamInterest.sparse,
-                    streamInterest.reliable,
-                    streamInterest.multicastSemantics);
-
-                state = State.CREATE_LOG_BUFFER;
+                nativeResourceAgentProxy.freeLogBuffer(rawLog);
             }
         }
 
         boolean execute()
         {
-            if (State.CREATE_LOG_BUFFER == state)
+            try
             {
-                final RawLog rawLog = imageLogResult.get();
-                if (null != rawLog)
+                if (State.VALIDATE == state)
                 {
-                    newPublicationImage(
-                        sessionId,
-                        streamId,
-                        initialTermId,
-                        activeTermId,
-                        termOffset,
-                        termBufferLength,
-                        senderMtuLength,
-                        transportIndex,
-                        flags,
-                        controlAddress,
-                        sourceAddress,
-                        channelEndpoint,
-                        registrationId,
-                        subscriptionParams,
-                        rawLog);
+                    Configuration.validateMtuLength(senderMtuLength);
 
-                    state = State.DONE;
+                    subscriptionParams = SubscriptionParams.getSubscriptionParams(
+                        channelEndpoint.subscriptionUdpChannel().channelUri(), ctx, termBufferLength);
+
+                    Configuration.validateInitialWindowLength(subscriptionParams.receiverWindowLength, senderMtuLength);
+
+                    final StreamInterest streamInterest = findSubscribers(channelEndpoint, sessionId, streamId, flags);
+                    if (null == streamInterest)
+                    {
+                        receiverProxy.removeInitInProgress(channelEndpoint, sessionId, streamId);
+                        state = State.DONE;
+                    }
+                    else
+                    {
+                        registrationId = toDriverCommands.nextCorrelationId();
+
+                        imageLogResult = nativeResourceAgentProxy.newPublicationImageLog(
+                            sessionId,
+                            streamId,
+                            initialTermId,
+                            termOffset,
+                            termBufferLength,
+                            senderMtuLength,
+                            channelEndpoint,
+                            registrationId,
+                            subscriptionParams,
+                            streamInterest.sparse,
+                            streamInterest.reliable,
+                            streamInterest.multicastSemantics);
+
+                        state = State.AWAIT_LOG_BUFFER;
+                    }
                 }
+
+                if (State.AWAIT_LOG_BUFFER == state)
+                {
+                    if (null != (rawLog = imageLogResult.get()))
+                    {
+                        newPublicationImage(
+                            sessionId,
+                            streamId,
+                            initialTermId,
+                            activeTermId,
+                            termOffset,
+                            termBufferLength,
+                            senderMtuLength,
+                            transportIndex,
+                            flags,
+                            controlAddress,
+                            sourceAddress,
+                            channelEndpoint,
+                            registrationId,
+                            subscriptionParams);
+
+                        state = State.DONE;
+                    }
+                }
+
+                return State.DONE == state;
+            }
+            catch (final RuntimeException ex)
+            {
+                receiverProxy.removeInitInProgress(channelEndpoint, sessionId, streamId);
+                throw ex;
+            }
+        }
+
+        @SuppressWarnings("MethodLength")
+        private void newPublicationImage(
+            final int sessionId,
+            final int streamId,
+            final int initialTermId,
+            final int activeTermId,
+            final int termOffset,
+            final int termBufferLength,
+            final int senderMtuLength,
+            final int transportIndex,
+            final short flags,
+            final InetSocketAddress controlAddress,
+            final InetSocketAddress sourceAddress,
+            final ReceiveChannelEndpoint channelEndpoint,
+            final long registrationId,
+            final SubscriptionParams subscriptionParams)
+        {
+            final long joinPosition = computePosition(
+                activeTermId, termOffset, LogBufferDescriptor.positionBitsToShift(termBufferLength), initialTermId);
+            final List<SubscriberPosition> subscriberPositions =
+                createSubscriberPositions(sessionId, streamId, channelEndpoint, joinPosition);
+            if (subscriberPositions.isEmpty())
+            {
+                receiverProxy.removeInitInProgress(channelEndpoint, sessionId, streamId);
+                return;
             }
 
-            return State.DONE == state;
+            final UdpChannel subscriptionChannel = channelEndpoint.subscriptionUdpChannel();
+            final SubscriptionLink subscription = subscriberPositions.get(0).subscription();
+            final boolean isMulticastSemantics =
+                isMulticastSemantics(subscriptionChannel, subscription.group(), flags);
+            final boolean isReliable = subscription.isReliable();
+
+            CongestionControl congestionControl = null;
+            UnsafeBufferPosition hwmPos = null, rcvPos = null;
+            AtomicCounter rcvNaksSent = null;
+            try
+            {
+                congestionControl = ctx.congestionControlSupplier().newInstance(
+                    registrationId,
+                    subscriptionChannel,
+                    streamId,
+                    sessionId,
+                    termBufferLength,
+                    senderMtuLength,
+                    controlAddress,
+                    sourceAddress,
+                    ctx.receiverCachedNanoClock(),
+                    ctx,
+                    countersManager);
+
+                final String uri = subscription.channel();
+                final long clientId = subscription.aeronClient().clientId();
+                hwmPos = ReceiverHwm.allocate(
+                    tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
+                rcvPos = ReceiverPos.allocate(
+                    tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
+                rcvNaksSent = ReceiverNaksSent.allocate(
+                    tempBuffer, countersManager, clientId, registrationId, sessionId, streamId, uri);
+
+                final String sourceIdentity = Configuration.sourceIdentity(sourceAddress);
+
+                final PublicationImage image = new PublicationImage(
+                    registrationId,
+                    ctx,
+                    channelEndpoint,
+                    transportIndex,
+                    controlAddress,
+                    sessionId,
+                    streamId,
+                    initialTermId,
+                    activeTermId,
+                    termOffset,
+                    flags,
+                    isReliable,
+                    subscriptionParams.untetheredWindowLimitTimeoutNs,
+                    subscriptionParams.untetheredLingerTimeoutNs,
+                    subscriptionParams.untetheredRestingTimeoutNs,
+                    rawLog,
+                    resolveDelayGenerator(ctx, subscriptionChannel, isMulticastSemantics, isReliable),
+                    subscriberPositions,
+                    hwmPos,
+                    rcvPos,
+                    rcvNaksSent,
+                    sourceIdentity,
+                    congestionControl);
+
+                rawLog = null; // transfer ownership
+
+                channelEndpoint.incRefImages();
+                publicationImages.add(image);
+                receiverProxy.newPublicationImage(channelEndpoint, image);
+
+                for (final SubscriberPosition position : subscriberPositions)
+                {
+                    position.addLink(image);
+
+                    final int positionCounterId = position.positionCounterId();
+                    countersManager.setCounterReferenceId(positionCounterId, registrationId);
+
+                    clientProxy.onAvailableImage(
+                        registrationId,
+                        streamId,
+                        sessionId,
+                        position.subscription().registrationId(),
+                        positionCounterId,
+                        image.rawLog().fileName(),
+                        sourceIdentity);
+                }
+            }
+            catch (final Exception ex)
+            {
+                recordError(ex);
+                subscriberPositions.forEach((subscriberPosition) -> subscriberPosition.position().close());
+                CloseHelper.quietCloseAll(congestionControl, hwmPos, rcvPos, rcvNaksSent);
+            }
         }
 
         private enum State
         {
-            CREATE_LOG_BUFFER,
+            VALIDATE,
+            AWAIT_LOG_BUFFER,
             DONE
         }
     }

@@ -16,6 +16,7 @@
 package io.aeron.driver;
 
 import io.aeron.Aeron;
+import io.aeron.ChannelUri;
 import io.aeron.CommonContext;
 import io.aeron.DriverProxy;
 import io.aeron.ErrorCode;
@@ -29,9 +30,11 @@ import io.aeron.driver.media.UdpChannel;
 import io.aeron.driver.media.WildcardPortManager;
 import io.aeron.driver.status.DutyCycleStallTracker;
 import io.aeron.driver.status.SystemCounters;
+import io.aeron.exceptions.ConfigurationException;
 import io.aeron.exceptions.ControlProtocolException;
 import io.aeron.logbuffer.HeaderWriter;
 import io.aeron.logbuffer.LogBufferDescriptor;
+import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.SetupFlyweight;
 import io.aeron.protocol.StatusMessageFlyweight;
 import io.aeron.test.Tests;
@@ -115,6 +118,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -130,6 +134,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class DriverConductorTest
@@ -387,10 +392,10 @@ class DriverConductorTest
         final int termOffset = 64;
         final String params =
             "|mtu=" + mtu +
-            "|term-length=" + termLength +
-            "|init-term-id=" + initialTermId +
-            "|term-id=" + termId +
-            "|term-offset=" + termOffset;
+                "|term-length=" + termLength +
+                "|init-term-id=" + initialTermId +
+                "|term-id=" + termId +
+                "|term-offset=" + termOffset;
 
         driverProxy.addExclusivePublication(CHANNEL_4000 + params, STREAM_ID_1);
 
@@ -421,9 +426,9 @@ class DriverConductorTest
         final int termOffset = 64;
         final String params =
             "?term-length=" + termLength +
-            "|init-term-id=" + initialTermId +
-            "|term-id=" + termId +
-            "|term-offset=" + termOffset;
+                "|init-term-id=" + initialTermId +
+                "|term-id=" + termId +
+                "|term-offset=" + termOffset;
 
         driverProxy.addExclusivePublication(CHANNEL_IPC + params, STREAM_ID_1);
 
@@ -2431,6 +2436,212 @@ class DriverConductorTest
             secondCorrelationId,
             ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE,
             "WARN - SendChannelEndpoint found in CLOSING state, please retry");
+    }
+
+    @Test
+    void createPublicationImageShouldRemoveInProgressStreamInterestMarkerIfThereAreNoSubscribers()
+    {
+        final int sessionId = 17;
+        final int streamId = 100;
+        final int initialTermId = 0;
+        final int activeTermId = 4;
+        final int termOffset = 128;
+        final int termBufferLength = 1024 * 1024;
+        final int mtuLength = 8 * 1024;
+        final int transportIndex = 6;
+        final short flags = 0;
+        final InetSocketAddress controlAddress = mock(InetSocketAddress.class);
+        final InetSocketAddress sourceAddress = mock(InetSocketAddress.class);
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(ACTIVE);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        when(udpChannel.channelUri()).thenReturn(ChannelUri.parse("aeron:udp?endpoint=localhost:5555"));
+        when(endpoint.subscriptionUdpChannel()).thenReturn(udpChannel);
+
+        driverConductor.onCreatePublicationImage(
+            sessionId,
+            streamId,
+            initialTermId,
+            activeTermId,
+            termOffset,
+            termBufferLength,
+            mtuLength,
+            transportIndex,
+            flags,
+            controlAddress,
+            sourceAddress,
+            endpoint);
+        doWorkUntilComplete();
+
+        verify(receiverProxy).removeInitInProgress(endpoint, sessionId, streamId);
+        verify(nativeResourceAgentProxy).nativeResourceAgent(nativeResourceAgent);
+        verifyNoMoreInteractions(receiverProxy, nativeResourceAgentProxy);
+    }
+
+    @Test
+    void createPublicationImageShouldRemoveInProgressStreamInterestMarkerIfEndpointIsNotActive()
+    {
+        final int sessionId = 17;
+        final int streamId = 100;
+        final int initialTermId = 0;
+        final int activeTermId = 4;
+        final int termOffset = 128;
+        final int termBufferLength = 1024 * 1024;
+        final int mtuLength = 8 * 1024;
+        final int transportIndex = 6;
+        final short flags = 0;
+        final InetSocketAddress controlAddress = mock(InetSocketAddress.class);
+        final InetSocketAddress sourceAddress = mock(InetSocketAddress.class);
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(CLOSING);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        final String channel = "aeron:udp?endpoint=localhost:5555";
+        when(udpChannel.channelUri()).thenReturn(ChannelUri.parse(channel));
+        when(endpoint.subscriptionUdpChannel()).thenReturn(udpChannel);
+
+        driverProxy.addSubscription(channel, streamId);
+        doWorkUntilComplete();
+
+        driverConductor.onCreatePublicationImage(
+            sessionId,
+            streamId,
+            initialTermId,
+            activeTermId,
+            termOffset,
+            termBufferLength,
+            mtuLength,
+            transportIndex,
+            flags,
+            controlAddress,
+            sourceAddress,
+            endpoint);
+        doWorkUntilComplete();
+
+        verify(receiverProxy).removeInitInProgress(endpoint, sessionId, streamId);
+        verify(receiverProxy).isApplyingBackpressure();
+        verify(receiverProxy).receiver();
+        verify(receiverProxy).registerReceiveChannelEndpoint(any(ReceiveChannelEndpoint.class));
+        verify(receiverProxy).addSubscription(any(ReceiveChannelEndpoint.class), eq(streamId));
+        verify(endpoint).subscriptionUdpChannel();
+        verify(endpoint).status();
+        verify(nativeResourceAgentProxy).nativeResourceAgent(nativeResourceAgent);
+        verify(nativeResourceAgentProxy).isApplyingBackpressure();
+        verify(nativeResourceAgentProxy).parseChannel(anyString(), anyBoolean());
+        verify(nativeResourceAgentProxy).offer(any());
+        verifyNoMoreInteractions(receiverProxy, endpoint, nativeResourceAgentProxy);
+    }
+
+    @Test
+    void createPublicationImageShouldRemoveInProgressStreamInterestMarkerOnError()
+    {
+        final int sessionId = 17;
+        final int streamId = 100;
+        final int initialTermId = 0;
+        final int activeTermId = 4;
+        final int termOffset = 128;
+        final int termBufferLength = 1024 * 1024;
+        final int mtuLength = DataHeaderFlyweight.HEADER_LENGTH - 1;
+        final int transportIndex = 6;
+        final short flags = 0;
+        final InetSocketAddress controlAddress = mock(InetSocketAddress.class);
+        final InetSocketAddress sourceAddress = mock(InetSocketAddress.class);
+        final ReceiveChannelEndpoint endpoint = mock(ReceiveChannelEndpoint.class);
+        when(endpoint.status()).thenReturn(ACTIVE);
+        final UdpChannel udpChannel = mock(UdpChannel.class);
+        when(udpChannel.channelUri()).thenReturn(ChannelUri.parse("aeron:udp?endpoint=localhost:5555"));
+        when(endpoint.subscriptionUdpChannel()).thenReturn(udpChannel);
+
+        driverConductor.onCreatePublicationImage(
+            sessionId,
+            streamId,
+            initialTermId,
+            activeTermId,
+            termOffset,
+            termBufferLength,
+            mtuLength,
+            transportIndex,
+            flags,
+            controlAddress,
+            sourceAddress,
+            endpoint);
+        doWorkUntilComplete();
+
+        verify(receiverProxy).removeInitInProgress(endpoint, sessionId, streamId);
+        final ArgumentCaptor<Throwable> captor = ArgumentCaptor.forClass(Throwable.class);
+        verify(mockErrorHandler).onError(captor.capture());
+        final Throwable error = captor.getValue();
+        assertInstanceOf(ConfigurationException.class, error);
+        assertEquals(
+            "ERROR - mtuLength=" + mtuLength + " <= HEADER_LENGTH=" + DataHeaderFlyweight.HEADER_LENGTH,
+            error.getMessage());
+        verify(nativeResourceAgentProxy).nativeResourceAgent(nativeResourceAgent);
+        verifyNoMoreInteractions(receiverProxy, mockErrorCounter, nativeResourceAgentProxy);
+    }
+
+    @Test
+    void createPublicationImageShouldRemoveInProgressStreamInterestMarkerIfEndpointBecomesNonActive()
+    {
+        final int sessionId = 42;
+        final int streamId = -666;
+        final int initialTermId = 10;
+        final int activeTermId = 14;
+        final int termOffset = 128;
+        final int termBufferLength = 1024 * 1024;
+        final int mtuLength = 8 * 1024;
+        final int transportIndex = 6;
+        final short flags = 0;
+        final InetSocketAddress controlAddress = mock(InetSocketAddress.class);
+        final InetSocketAddress sourceAddress = mock(InetSocketAddress.class);
+        final String channel = "aeron:udp?endpoint=localhost:4444";
+
+        driverProxy.addSubscription(channel, streamId);
+        doWorkUntilComplete();
+
+        final ArgumentCaptor<ReceiveChannelEndpoint> captor = ArgumentCaptor.forClass(ReceiveChannelEndpoint.class);
+        verify(receiverProxy).registerReceiveChannelEndpoint(captor.capture());
+        receiveChannelEndpoint = captor.getValue();
+
+        driverConductor.onCreatePublicationImage(
+            sessionId,
+            streamId,
+            initialTermId,
+            activeTermId,
+            termOffset,
+            termBufferLength,
+            mtuLength,
+            transportIndex,
+            flags,
+            controlAddress,
+            sourceAddress,
+            receiveChannelEndpoint);
+        doWork();
+
+        receiveChannelEndpoint.indicateClosing();
+        doWorkUntilComplete();
+
+        verify(receiverProxy).removeInitInProgress(receiveChannelEndpoint, sessionId, streamId);
+        verify(receiverProxy).isApplyingBackpressure();
+        verify(receiverProxy).receiver();
+        verify(receiverProxy).addSubscription(eq(receiveChannelEndpoint), eq(streamId));
+        verify(nativeResourceAgentProxy).nativeResourceAgent(nativeResourceAgent);
+        verify(nativeResourceAgentProxy).isApplyingBackpressure();
+        verify(nativeResourceAgentProxy).parseChannel(anyString(), anyBoolean());
+        verify(nativeResourceAgentProxy).newPublicationImageLog(
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            anyInt(),
+            any(),
+            anyLong(),
+            any(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean());
+        verify(nativeResourceAgentProxy).freeLogBuffer(any());
+        verify(nativeResourceAgentProxy, times(3)).offer(any());
+        verifyNoMoreInteractions(receiverProxy, nativeResourceAgentProxy);
     }
 
     private void doWorkUntil(final BooleanSupplier condition, final LongConsumer timeConsumer)

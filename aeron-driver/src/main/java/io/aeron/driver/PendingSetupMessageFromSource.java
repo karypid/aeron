@@ -19,6 +19,8 @@ import io.aeron.driver.media.ReceiveChannelEndpoint;
 
 import java.net.InetSocketAddress;
 
+import static io.aeron.driver.DataPacketDispatcher.SessionState.PENDING_SETUP_FRAME;
+
 final class PendingSetupMessageFromSource
 {
     private final int sessionId;
@@ -98,7 +100,7 @@ final class PendingSetupMessageFromSource
 
     void removeFromDataPacketDispatcher()
     {
-        channelEndpoint.dispatcher().removePendingSetup(sessionId, streamId);
+        channelEndpoint.dispatcher().removeSessionInterestByState(sessionId, streamId, PENDING_SETUP_FRAME);
     }
 
     public String toString()

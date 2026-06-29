@@ -85,6 +85,11 @@ final class ReceiverProxy extends CommandProxy
         offer(() -> receiver.onRemoveCoolDown(channelEndpoint, sessionId, streamId));
     }
 
+    void removeInitInProgress(final ReceiveChannelEndpoint channelEndpoint, final int sessionId, final int streamId)
+    {
+        offer(() -> receiver.onRemoveInitInProgress(channelEndpoint, sessionId, streamId));
+    }
+
     void addDestination(final ReceiveChannelEndpoint channelEndpoint, final ReceiveDestinationTransport transport)
     {
         offer(() -> receiver.onAddDestination(channelEndpoint, transport));

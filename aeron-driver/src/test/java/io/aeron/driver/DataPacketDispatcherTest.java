@@ -26,6 +26,8 @@ import org.agrona.concurrent.UnsafeBuffer;
 
 import java.net.InetSocketAddress;
 
+import static io.aeron.driver.DataPacketDispatcher.SessionState.ON_COOL_DOWN;
+import static io.aeron.driver.DataPacketDispatcher.SessionState.PENDING_SETUP_FRAME;
 import static org.mockito.Mockito.*;
 
 class DataPacketDispatcherTest
@@ -103,7 +105,7 @@ class DataPacketDispatcherTest
         dispatcher.addSubscription(STREAM_ID);
         dispatcher.onDataPacket(mockChannelEndpoint, mockHeader, mockBuffer, LENGTH, SRC_ADDRESS, 0);
         dispatcher.onDataPacket(mockChannelEndpoint, mockHeader, mockBuffer, LENGTH, SRC_ADDRESS, 0);
-        dispatcher.removePendingSetup(SESSION_ID, STREAM_ID);
+        dispatcher.removeSessionInterestByState(SESSION_ID, STREAM_ID, PENDING_SETUP_FRAME);
         dispatcher.onDataPacket(mockChannelEndpoint, mockHeader, mockBuffer, LENGTH, SRC_ADDRESS, 0);
         dispatcher.onDataPacket(mockChannelEndpoint, mockHeader, mockBuffer, LENGTH, SRC_ADDRESS, 0);
 
@@ -212,7 +214,7 @@ class DataPacketDispatcherTest
         dispatcher.addSubscription(STREAM_ID);
         dispatcher.addPublicationImage(mockImage);
         dispatcher.removePublicationImage(mockImage);
-        dispatcher.removeCoolDown(SESSION_ID, STREAM_ID);
+        dispatcher.removeSessionInterestByState(SESSION_ID, STREAM_ID, ON_COOL_DOWN);
         dispatcher.onDataPacket(mockChannelEndpoint, mockHeader, mockBuffer, LENGTH, SRC_ADDRESS, 0);
         dispatcher.onSetupMessage(mockChannelEndpoint, mockSetupHeader, SRC_ADDRESS, 0);
 

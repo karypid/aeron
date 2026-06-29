@@ -43,6 +43,7 @@ import java.lang.invoke.VarHandle;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static io.aeron.ErrorCode.IMAGE_REJECTED;
 import static io.aeron.driver.LossDetector.lossFound;
@@ -230,7 +231,7 @@ public final class PublicationImage
         final long untetheredRestingTimeoutNs,
         final RawLog rawLog,
         final FeedbackDelayGenerator lossFeedbackDelayGenerator,
-        final ArrayList<SubscriberPosition> subscriberPositions,
+        final List<SubscriberPosition> subscriberPositions,
         final Position hwmPosition,
         final Position rebuildPosition,
         final AtomicCounter receiverNaksSent,
@@ -1255,7 +1256,7 @@ public final class PublicationImage
         }
     }
 
-    private ReadablePosition[] positionArray(final ArrayList<SubscriberPosition> subscriberPositions, final long nowNs)
+    private ReadablePosition[] positionArray(final List<SubscriberPosition> subscriberPositions, final long nowNs)
     {
         final int size = subscriberPositions.size();
         final ReadablePosition[] positions = new ReadablePosition[subscriberPositions.size()];

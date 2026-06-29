@@ -15,6 +15,7 @@
  */
 package io.aeron.driver;
 
+import io.aeron.api.InternalApi;
 import io.aeron.driver.exceptions.UnknownSubscriptionException;
 import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.exceptions.AeronEvent;
@@ -34,6 +35,7 @@ import static io.aeron.driver.DataPacketDispatcher.SessionState.*;
  * <p>
  * All methods should be called from the {@link Receiver} thread.
  */
+@InternalApi
 public final class DataPacketDispatcher
 {
     @SuppressWarnings("JavadocVariable")
@@ -267,28 +269,6 @@ public final class DataPacketDispatcher
     }
 
     /**
-     * Remove a pending setup message action once it has been handled.
-     *
-     * @param sessionId of the registered interest.
-     * @param streamId  of the registered interest.
-     */
-    public void removePendingSetup(final int sessionId, final int streamId)
-    {
-        removeByState(sessionId, streamId, PENDING_SETUP_FRAME);
-    }
-
-    /**
-     * Remove a cool down action once it has expired.
-     *
-     * @param sessionId of the registered interest.
-     * @param streamId  of the registered interest.
-     */
-    public void removeCoolDown(final int sessionId, final int streamId)
-    {
-        removeByState(sessionId, streamId, ON_COOL_DOWN);
-    }
-
-    /**
      * Dispatch a data packet to the registered interest.
      *
      * @param channelEndpoint on which the packet was received.
@@ -469,7 +449,7 @@ public final class DataPacketDispatcher
         return !streamInterestByIdMap.isEmpty();
     }
 
-    private void removeByState(final int sessionId, final int streamId, final SessionState state)
+    void removeSessionInterestByState(final int sessionId, final int streamId, final SessionState state)
     {
         final StreamInterest streamInterest = streamInterestByIdMap.get(streamId);
         if (null != streamInterest)
