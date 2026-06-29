@@ -337,14 +337,18 @@ int aeron_data_packet_dispatcher_remove_publication_image(
         {
             aeron_int64_to_ptr_hash_map_remove(&stream_interest->image_by_session_id_map, image->session_id);
 
-            // TODO: Java driver checks end of stream at this point.
-            if (aeron_int64_counter_map_put(
-                &stream_interest->state_by_session_id_map, image->session_id, AERON_DATA_PACKET_DISPATCHER_IMAGE_COOL_DOWN, NULL) < 0)
+            bool is_end_of_stream;
+            AERON_GET_ACQUIRE(is_end_of_stream, image->is_end_of_stream);
+            if (!is_end_of_stream)
             {
-                AERON_APPEND_ERR(
-                    "Unable to set IMAGE_COOL_DOWN for session_id (%" PRId32 ") in image_by_session_id_map",
-                    image->session_id);
-                return -1;
+                if (aeron_int64_counter_map_put(
+                    &stream_interest->state_by_session_id_map, image->session_id, AERON_DATA_PACKET_DISPATCHER_IMAGE_COOL_DOWN, NULL) < 0)
+                {
+                    AERON_APPEND_ERR(
+                        "Unable to set IMAGE_COOL_DOWN for session_id (%" PRId32 ") in image_by_session_id_map",
+                        image->session_id);
+                    return -1;
+                }
             }
         }
     }
