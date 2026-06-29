@@ -2626,18 +2626,9 @@ class DriverConductorTest
         verify(nativeResourceAgentProxy).nativeResourceAgent(nativeResourceAgent);
         verify(nativeResourceAgentProxy).isApplyingBackpressure();
         verify(nativeResourceAgentProxy).parseChannel(anyString(), anyBoolean());
-        verify(nativeResourceAgentProxy).newPublicationImageLog(
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            anyInt(),
-            any(),
+        verify(nativeResourceAgentProxy).newImageLog(
             anyLong(),
-            any(),
-            anyBoolean(),
-            anyBoolean(),
+            anyInt(),
             anyBoolean());
         verify(nativeResourceAgentProxy).freeLogBuffer(any());
         verify(nativeResourceAgentProxy, times(3)).offer(any());

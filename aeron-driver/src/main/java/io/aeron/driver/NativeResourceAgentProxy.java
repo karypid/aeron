@@ -17,7 +17,6 @@ package io.aeron.driver;
 
 import io.aeron.ChannelUri;
 import io.aeron.driver.buffer.RawLog;
-import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.UdpChannel;
 import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -66,68 +65,19 @@ final class NativeResourceAgentProxy extends CommandProxy
         offer(() -> nativeResourceAgent.onFreeLogBuffer(rawLog));
     }
 
-    CommandResult<RawLog> newNetworkPublicationLog(
-        final boolean isExclusive,
-        final int streamId,
-        final long registrationId,
-        final int socketRcvBufLength,
-        final int socketSndBufLength,
-        final PublicationParams params,
-        final boolean hasGroupSemantics)
+    CommandResult<RawLog> newPublicationLog(
+        final long registrationId, final int termBufferLength, final boolean useSparseFiles)
     {
         final CommandResult<RawLog> result = new CommandResult<>();
-        offer(() -> nativeResourceAgent.onNewNetworkPublicationLog(
-            result,
-            isExclusive,
-            streamId,
-            registrationId,
-            socketRcvBufLength,
-            socketSndBufLength,
-            params,
-            hasGroupSemantics));
+        offer(() -> nativeResourceAgent.onNewPublicationLog(result, registrationId, termBufferLength, useSparseFiles));
         return result;
     }
 
-    CommandResult<RawLog> newIpcPublicationLog(
-        final boolean isExclusive,
-        final int streamId,
-        final long registrationId,
-        final PublicationParams params)
+    CommandResult<RawLog> newImageLog(
+        final long registrationId, final int termBufferLength, final boolean useSparseFiles)
     {
         final CommandResult<RawLog> result = new CommandResult<>();
-        offer(() -> nativeResourceAgent.onNewIpcPublicationLog(result, isExclusive, streamId, registrationId, params));
-        return result;
-    }
-
-    CommandResult<RawLog> newPublicationImageLog(
-        final int sessionId,
-        final int streamId,
-        final int initialTermId,
-        final int termOffset,
-        final int termBufferLength,
-        final int senderMtuLength,
-        final ReceiveChannelEndpoint channelEndpoint,
-        final long registrationId,
-        final SubscriptionParams params,
-        final boolean sparse,
-        final boolean reliable,
-        final boolean groupSemantics)
-    {
-        final CommandResult<RawLog> result = new CommandResult<>();
-        offer(() -> nativeResourceAgent.onNewPublicationImageLog(
-            result,
-            sessionId,
-            streamId,
-            initialTermId,
-            termOffset,
-            termBufferLength,
-            senderMtuLength,
-            channelEndpoint,
-            registrationId,
-            params,
-            sparse,
-            reliable,
-            groupSemantics));
+        offer(() -> nativeResourceAgent.onNewImageLog(result, registrationId, termBufferLength, useSparseFiles));
         return result;
     }
 }

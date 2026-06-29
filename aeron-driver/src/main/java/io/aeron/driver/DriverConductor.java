@@ -46,6 +46,7 @@ import io.aeron.exceptions.AeronEvent;
 import io.aeron.exceptions.AeronException;
 import io.aeron.exceptions.ControlProtocolException;
 import io.aeron.logbuffer.LogBufferDescriptor;
+import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.ErrorFlyweight;
 import io.aeron.protocol.SetupFlyweight;
 import io.aeron.status.ChannelEndpointStatus;
@@ -61,6 +62,7 @@ import org.agrona.concurrent.CachedNanoClock;
 import org.agrona.concurrent.EpochClock;
 import org.agrona.concurrent.ManyToOneConcurrentLinkedQueue;
 import org.agrona.concurrent.NanoClock;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.ringbuffer.RingBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.agrona.concurrent.status.CountersManager;
@@ -108,9 +110,52 @@ import static io.aeron.driver.status.SystemCounterDescriptor.INVALID_PACKETS;
 import static io.aeron.driver.status.SystemCounterDescriptor.RESOLUTION_CHANGES;
 import static io.aeron.driver.status.SystemCounterDescriptor.RETRANSMIT_OVERFLOW;
 import static io.aeron.driver.status.SystemCounterDescriptor.UNBLOCKED_COMMANDS;
+import static io.aeron.logbuffer.LogBufferDescriptor.LOG_BUFFER_TYPE_CONCURRENT_PUBLICATION;
+import static io.aeron.logbuffer.LogBufferDescriptor.LOG_BUFFER_TYPE_EXCLUSIVE_PUBLICATION;
+import static io.aeron.logbuffer.LogBufferDescriptor.LOG_BUFFER_TYPE_PUBLICATION_IMAGE;
+import static io.aeron.logbuffer.LogBufferDescriptor.PARTITION_COUNT;
 import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MIN_LENGTH;
+import static io.aeron.logbuffer.LogBufferDescriptor.activeTermCount;
 import static io.aeron.logbuffer.LogBufferDescriptor.computePosition;
+import static io.aeron.logbuffer.LogBufferDescriptor.correlationId;
+import static io.aeron.logbuffer.LogBufferDescriptor.endOfStreamPosition;
+import static io.aeron.logbuffer.LogBufferDescriptor.entityTag;
+import static io.aeron.logbuffer.LogBufferDescriptor.group;
+import static io.aeron.logbuffer.LogBufferDescriptor.indexByTerm;
+import static io.aeron.logbuffer.LogBufferDescriptor.initialTermId;
+import static io.aeron.logbuffer.LogBufferDescriptor.initialiseTailWithTermId;
+import static io.aeron.logbuffer.LogBufferDescriptor.isPublicationRevoked;
+import static io.aeron.logbuffer.LogBufferDescriptor.isResponse;
+import static io.aeron.logbuffer.LogBufferDescriptor.lingerTimeoutNs;
+import static io.aeron.logbuffer.LogBufferDescriptor.maxResend;
+import static io.aeron.logbuffer.LogBufferDescriptor.mtuLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.nextPartitionIndex;
+import static io.aeron.logbuffer.LogBufferDescriptor.osDefaultSocketRcvbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.osDefaultSocketSndbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.osMaxSocketRcvbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.osMaxSocketSndbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.packTail;
+import static io.aeron.logbuffer.LogBufferDescriptor.pageSize;
 import static io.aeron.logbuffer.LogBufferDescriptor.positionBitsToShift;
+import static io.aeron.logbuffer.LogBufferDescriptor.publicationWindowLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.rawTail;
+import static io.aeron.logbuffer.LogBufferDescriptor.receiverWindowLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.rejoin;
+import static io.aeron.logbuffer.LogBufferDescriptor.reliable;
+import static io.aeron.logbuffer.LogBufferDescriptor.responseCorrelationId;
+import static io.aeron.logbuffer.LogBufferDescriptor.signalEos;
+import static io.aeron.logbuffer.LogBufferDescriptor.socketRcvbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.socketSndbufLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.sparse;
+import static io.aeron.logbuffer.LogBufferDescriptor.spiesSimulateConnection;
+import static io.aeron.logbuffer.LogBufferDescriptor.storeDefaultFrameHeader;
+import static io.aeron.logbuffer.LogBufferDescriptor.termLength;
+import static io.aeron.logbuffer.LogBufferDescriptor.tether;
+import static io.aeron.logbuffer.LogBufferDescriptor.type;
+import static io.aeron.logbuffer.LogBufferDescriptor.untetheredLingerTimeoutNs;
+import static io.aeron.logbuffer.LogBufferDescriptor.untetheredRestingTimeoutNs;
+import static io.aeron.logbuffer.LogBufferDescriptor.untetheredWindowLimitTimeoutNs;
+import static io.aeron.protocol.DataHeaderFlyweight.createDefaultHeader;
 import static org.agrona.collections.ArrayListUtil.fastUnorderedRemove;
 
 /**
@@ -164,6 +209,7 @@ public final class DriverConductor implements Agent
     private final MutableDirectBuffer tempBuffer;
     private final AtomicCounter imagesRejected;
     private final DutyCycleTracker dutyCycleTracker;
+    private final DataHeaderFlyweight defaultDataHeader = new DataHeaderFlyweight(createDefaultHeader(0, 0, 0));
     private ClientCommand clientCommand;
     private Command driverCommand;
 
@@ -2131,6 +2177,113 @@ public final class DriverConductor implements Agent
         return workCount;
     }
 
+    private void initLogMetadata(
+        final byte type,
+        final int sessionId,
+        final int streamId,
+        final int initialTermId,
+        final int mtuLength,
+        final long registrationId,
+        final int socketRcvBufLength,
+        final int socketSndbufLength,
+        final int termOffset,
+        final int receiverWindowLength,
+        final boolean tether,
+        final boolean rejoin,
+        final boolean reliable,
+        final boolean sparse,
+        final boolean group,
+        final boolean isResponse,
+        final int publicationWindowLength,
+        final long untetheredWindowLimitTimeoutNs,
+        final long untetheredLingerTimeoutNs,
+        final long untetheredRestingTimeoutNs,
+        final int maxResend,
+        final long lingerTimeoutNs,
+        final boolean signalEos,
+        final boolean spiesSimulateConnection,
+        final long entityTag,
+        final long responseCorrelationId,
+        final RawLog rawLog)
+    {
+        final UnsafeBuffer logMetaData = rawLog.metaData();
+
+        defaultDataHeader
+            .sessionId(sessionId)
+            .streamId(streamId)
+            .termId(initialTermId)
+            .termOffset(termOffset);
+        storeDefaultFrameHeader(logMetaData, defaultDataHeader);
+
+        correlationId(logMetaData, registrationId);
+        initialTermId(logMetaData, initialTermId);
+        mtuLength(logMetaData, mtuLength);
+        termLength(logMetaData, rawLog.termLength());
+        pageSize(logMetaData, ctx.filePageSize());
+
+        publicationWindowLength(logMetaData, publicationWindowLength);
+        receiverWindowLength(logMetaData, receiverWindowLength);
+        socketSndbufLength(logMetaData, socketSndbufLength);
+        osDefaultSocketSndbufLength(logMetaData, ctx.osDefaultSocketSndbufLength());
+        osMaxSocketSndbufLength(logMetaData, ctx.osMaxSocketSndbufLength());
+        socketRcvbufLength(logMetaData, socketRcvBufLength);
+        osDefaultSocketRcvbufLength(logMetaData, ctx.osDefaultSocketRcvbufLength());
+        osMaxSocketRcvbufLength(logMetaData, ctx.osMaxSocketRcvbufLength());
+        maxResend(logMetaData, maxResend);
+
+        rejoin(logMetaData, rejoin);
+        reliable(logMetaData, reliable);
+        sparse(logMetaData, sparse);
+        signalEos(logMetaData, signalEos);
+        spiesSimulateConnection(logMetaData, spiesSimulateConnection);
+        tether(logMetaData, tether);
+        isPublicationRevoked(logMetaData, false);
+        group(logMetaData, group);
+        isResponse(logMetaData, isResponse);
+        type(logMetaData, type);
+
+        entityTag(logMetaData, entityTag);
+        responseCorrelationId(logMetaData, responseCorrelationId);
+        untetheredWindowLimitTimeoutNs(logMetaData, untetheredWindowLimitTimeoutNs);
+        untetheredLingerTimeoutNs(logMetaData, untetheredLingerTimeoutNs);
+        untetheredRestingTimeoutNs(logMetaData, untetheredRestingTimeoutNs);
+        lingerTimeoutNs(logMetaData, lingerTimeoutNs);
+
+        // Acts like a release fence; so this should be the last statement to ensure that all above writes
+        // are ordered before the eos-position.
+        endOfStreamPosition(logMetaData, Long.MAX_VALUE);
+    }
+
+    private static void initialiseLogBufferPosition(
+        final int initialTermId, final PublicationParams params, final UnsafeBuffer logMetaData)
+    {
+        if (params.hasPosition)
+        {
+            final int termId = params.termId;
+            final int termCount = termId - initialTermId;
+            int activeIndex = indexByTerm(initialTermId, termId);
+
+            rawTail(logMetaData, activeIndex, packTail(termId, params.termOffset));
+            for (int i = 1; i < PARTITION_COUNT; i++)
+            {
+                final int expectedTermId = (termId + i) - PARTITION_COUNT;
+                activeIndex = nextPartitionIndex(activeIndex);
+                initialiseTailWithTermId(logMetaData, activeIndex, expectedTermId);
+            }
+
+            activeTermCount(logMetaData, termCount);
+        }
+        else
+        {
+            initialiseTailWithTermId(logMetaData, 0, initialTermId);
+            for (int i = 1; i < PARTITION_COUNT; i++)
+            {
+                final int expectedTermId = (initialTermId + i) - PARTITION_COUNT;
+                initialiseTailWithTermId(logMetaData, i, expectedTermId);
+            }
+        }
+    }
+
     private static void validateChannelBufferLength(
         final String paramName,
         final int newLength,
@@ -2342,6 +2495,8 @@ public final class DriverConductor implements Agent
         private CommandResult<UdpChannel> parseChannelResult;
         private CommandResult<RawLog> logBufferResult;
         private RawLog rawLog;
+        private int socketRcvBufLength;
+        private int socketSndBufLength;
 
         private AddNetworkPublicationCommand(
             final String channel,
@@ -2444,8 +2599,6 @@ public final class DriverConductor implements Agent
                     params.termLength = TERM_MIN_LENGTH;
                 }
 
-                final int socketRcvBufLength;
-                final int socketSndBufLength;
                 if (null != channelEndpoint)
                 {
                     socketRcvBufLength = channelEndpoint.socketRcvbufLength();
@@ -2457,14 +2610,10 @@ public final class DriverConductor implements Agent
                     socketSndBufLength = udpChannel.socketSndbufLength();
                 }
 
-                logBufferResult = nativeResourceAgentProxy.newNetworkPublicationLog(
-                    isExclusive,
-                    streamId,
+                logBufferResult = nativeResourceAgentProxy.newPublicationLog(
                     correlationId,
-                    socketRcvBufLength,
-                    socketSndBufLength,
-                    params,
-                    udpChannel.hasGroupSemantics());
+                    params.termLength,
+                    params.isSparse);
 
                 state = State.AWAIT_LOG_BUFFER;
             }
@@ -2493,8 +2642,47 @@ public final class DriverConductor implements Agent
         {
             if (null != (rawLog = logBufferResult.get()))
             {
+                initializeLogMetadata();
                 state = State.CREATE_PUBLICATION;
             }
+        }
+
+        private void initializeLogMetadata()
+        {
+            final int receiverWindowLength = 0;
+            final boolean tether = false;
+            final boolean rejoin = false;
+            final boolean reliable = false;
+            final int initialTermId = params.initialTermId;
+            initLogMetadata(
+                isExclusive ? LOG_BUFFER_TYPE_EXCLUSIVE_PUBLICATION : LOG_BUFFER_TYPE_CONCURRENT_PUBLICATION,
+                params.sessionId,
+                streamId,
+                initialTermId,
+                params.mtuLength,
+                correlationId,
+                socketRcvBufLength,
+                socketSndBufLength,
+                params.termOffset,
+                receiverWindowLength,
+                tether,
+                rejoin,
+                reliable,
+                params.isSparse,
+                udpChannel.hasGroupSemantics(),
+                params.isResponse,
+                params.publicationWindowLength,
+                params.untetheredWindowLimitTimeoutNs,
+                params.untetheredLingerTimeoutNs,
+                params.untetheredRestingTimeoutNs,
+                params.maxResend,
+                params.lingerTimeoutNs,
+                params.signalEos,
+                params.spiesSimulateConnection,
+                params.entityTag,
+                params.responseCorrelationId,
+                rawLog);
+            initialiseLogBufferPosition(initialTermId, params, rawLog.metaData());
         }
 
         private void createPublication()
@@ -2662,8 +2850,50 @@ public final class DriverConductor implements Agent
         {
             if (null != (rawLog = logBufferResult.get()))
             {
+                initializeLogMetadata();
                 state = State.CREATE_PUBLICATION;
             }
+        }
+
+        private void initializeLogMetadata()
+        {
+            final int socketRcvBufLength = 0;
+            final int socketSndbufLength = 0;
+            final int receiverWindowLength = 0;
+            final boolean tether = false;
+            final boolean rejoin = false;
+            final boolean reliable = false;
+            final boolean group = false;
+            final int initialTermId = params.initialTermId;
+            initLogMetadata(
+                isExclusive ? LOG_BUFFER_TYPE_EXCLUSIVE_PUBLICATION : LOG_BUFFER_TYPE_CONCURRENT_PUBLICATION,
+                params.sessionId,
+                streamId,
+                initialTermId,
+                params.mtuLength,
+                correlationId,
+                socketRcvBufLength,
+                socketSndbufLength,
+                params.termOffset,
+                receiverWindowLength,
+                tether,
+                rejoin,
+                reliable,
+                params.isSparse,
+                group,
+                params.isResponse,
+                params.publicationWindowLength,
+                params.untetheredWindowLimitTimeoutNs,
+                params.untetheredLingerTimeoutNs,
+                params.untetheredRestingTimeoutNs,
+                params.maxResend,
+                params.lingerTimeoutNs,
+                params.signalEos,
+                params.spiesSimulateConnection,
+                params.entityTag,
+                params.responseCorrelationId,
+                rawLog);
+            initialiseLogBufferPosition(initialTermId, params, rawLog.metaData());
         }
 
         private void init()
@@ -2684,8 +2914,8 @@ public final class DriverConductor implements Agent
             {
                 checkForSessionClash(params.sessionId, streamId, IPC_MEDIA, channel);
 
-                logBufferResult = nativeResourceAgentProxy.newIpcPublicationLog(
-                    isExclusive, streamId, correlationId, params);
+                logBufferResult = nativeResourceAgentProxy.newPublicationLog(
+                    correlationId, params.termLength, params.isSparse);
 
                 state = State.AWAIT_LOG_BUFFER;
             }
@@ -3289,6 +3519,7 @@ public final class DriverConductor implements Agent
         private long registrationId;
         private State state = State.VALIDATE;
         private RawLog rawLog;
+        private StreamInterest streamInterest;
 
         CreatePublicationImageCommand(
             final int sessionId,
@@ -3339,7 +3570,7 @@ public final class DriverConductor implements Agent
 
                     Configuration.validateInitialWindowLength(subscriptionParams.receiverWindowLength, senderMtuLength);
 
-                    final StreamInterest streamInterest = findSubscribers(channelEndpoint, sessionId, streamId, flags);
+                    streamInterest = findSubscribers(channelEndpoint, sessionId, streamId, flags);
                     if (null == streamInterest)
                     {
                         receiverProxy.removeInitInProgress(channelEndpoint, sessionId, streamId);
@@ -3349,20 +3580,10 @@ public final class DriverConductor implements Agent
                     {
                         registrationId = toDriverCommands.nextCorrelationId();
 
-                        imageLogResult = nativeResourceAgentProxy.newPublicationImageLog(
-                            sessionId,
-                            streamId,
-                            initialTermId,
-                            termOffset,
-                            termBufferLength,
-                            senderMtuLength,
-                            channelEndpoint,
+                        imageLogResult = nativeResourceAgentProxy.newImageLog(
                             registrationId,
-                            subscriptionParams,
-                            streamInterest.sparse,
-                            streamInterest.reliable,
-                            streamInterest.multicastSemantics);
-
+                            termBufferLength,
+                            streamInterest.sparse);
                         state = State.AWAIT_LOG_BUFFER;
                     }
                 }
@@ -3371,6 +3592,7 @@ public final class DriverConductor implements Agent
                 {
                     if (null != (rawLog = imageLogResult.get()))
                     {
+                        initializeLogMetadata();
                         newPublicationImage(
                             sessionId,
                             streamId,
@@ -3398,6 +3620,45 @@ public final class DriverConductor implements Agent
                 receiverProxy.removeInitInProgress(channelEndpoint, sessionId, streamId);
                 throw ex;
             }
+        }
+
+        private void initializeLogMetadata()
+        {
+            final int publicationWindowLength = 0;
+            final int maxResend = 0;
+            final long lingerTimeoutNs = 0;
+            final boolean signalEos = false;
+            final boolean spiesSimulateConnection = false;
+            final long entityTag = 0;
+            final long responseCorrelationId = 0;
+            initLogMetadata(
+                LOG_BUFFER_TYPE_PUBLICATION_IMAGE,
+                sessionId,
+                streamId,
+                initialTermId,
+                senderMtuLength,
+                registrationId,
+                channelEndpoint.socketRcvbufLength(),
+                channelEndpoint.socketSndbufLength(),
+                termOffset,
+                subscriptionParams.receiverWindowLength,
+                subscriptionParams.isTether,
+                subscriptionParams.isRejoin,
+                streamInterest.reliable,
+                streamInterest.reliable,
+                streamInterest.multicastSemantics,
+                subscriptionParams.isResponse,
+                publicationWindowLength,
+                subscriptionParams.untetheredWindowLimitTimeoutNs,
+                subscriptionParams.untetheredLingerTimeoutNs,
+                subscriptionParams.untetheredRestingTimeoutNs,
+                maxResend,
+                lingerTimeoutNs,
+                signalEos,
+                spiesSimulateConnection,
+                entityTag,
+                responseCorrelationId,
+                rawLog);
         }
 
         @SuppressWarnings("MethodLength")
