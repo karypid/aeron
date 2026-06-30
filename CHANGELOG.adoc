@@ -57,9 +57,12 @@ resolution.
 * **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
 * **[Client]** Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
 image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
+* **[Client]** Handle error condition in PersistentSubscription where live position goes backwards. (https://github.com/aeron-io/aeron/pull/2040[#2040])
 * **[C]** Improved support for AddressSanitizer builds and testing on Windows. (https://github.com/aeron-io/aeron/pull/2022[#2022])
 * **[Client/Java]** Fixed potential integer overflow of `blockLengthLimit` in `Image.blockPoll` and `Image.rawPoll`. (https://github.com/aeron-io/aeron/pull/2036[#2036])
 * **[Client/C]** Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
+* **[Client/C]** Fixed issue where conductor command drain loop might break out early when there was a padding record
+in the queue. (https://github.com/aeron-io/aeron/pull/2045[#2045])
 * **[C/C{plus}{plus} Wrapper]** Add PowerPC 64-bit (`ppc64le`) support to C and C++ clients. (https://github.com/aeron-io/aeron/pull/2060[#2060])
 * **[Cluster]** Added `VersionValidator` interface. (https://github.com/aeron-io/aeron/pull/2059[#2059])
 * **[Driver/C]** Fix `session-id` checks for network publications.
@@ -76,12 +79,28 @@ client's session are seen.
 a specific error.
 * **[Archive]** Retry the creation of the control subscription when a temporary failure occurs.
 * **[Archive]** Retry creation of the replay publication.
+* **[Archive]** Show `clientInfo` of the `CMD_IN_AUTH_CONNECT` agent logging event.
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.10.
 * **[Java]** Upgrade to `Shadow` 9.4.3.
 * **[Java]** Upgrade to `ASM` 9.10.1.
 * **[C]** Upgrade to `HdrHistogram` 0.11.10.
+
+== 1.51.1 (2026-06-30)
+
+* **[Driver]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing spies
+mutated the array that the sender thread was iterating over.
+* **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
+* **[Client]** Refresh the recording descriptor before attempting the replay again if a Persistent Subscription loses its
+image during a replay. (https://github.com/aeron-io/aeron/pull/2037[#2037])
+* **[Client]** Handle error condition in PersistentSubscription where live position goes backwards. (https://github.com/aeron-io/aeron/pull/2040[#2040])
+* **[Client/C]** Fixed issue where conductor command drain loop might break out early when there was a padding record
+in the queue. (https://github.com/aeron-io/aeron/pull/2045[#2045])
+* **[Client/C]** Remove `aeron_archive_persistent_subscription.h` from the package as it has no public API.
+* **[Driver/C]** Use `EBUSY` error code when active media driver is detected.
+* **[Client/C]**  Fix a race condition in client conductor. (https://github.com/aeron-io/aeron/pull/2043[#2043])
+* **[Archive]** Show `clientInfo` of the `CMD_IN_AUTH_CONNECT` agent logging event.
 
 == 1.51.0 (2026-04-28)
 
