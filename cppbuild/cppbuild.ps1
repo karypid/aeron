@@ -164,7 +164,7 @@ for ($i = 0; $i -lt $Args.count; $i++)
 
 $BuildDir = "$PSScriptRoot\$BuildConfig"
 $SourceDir = "$PSScriptRoot\.."
-$CMakeVersion = "4.3.3"
+$CMakeVersion = "4.3.4"
 $CMakeArch = "x86_64"
 if ( $env:PROCESSOR_ARCHITECTURE -eq "ARM64" )
 {
