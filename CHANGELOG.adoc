@@ -74,6 +74,8 @@ image creation to be retried.
 client's session are seen.
 * **[C/Archive Client]** Correctly pass the `UNKNOWN_REPLICATION` error code when polling for responses that allow for
 a specific error.
+* **[Archive]** Retry the creation of the control subscription when a temporary failure occurs.
+* **[Archive]** Retry creation of the replay publication.
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.10.

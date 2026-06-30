@@ -17,9 +17,13 @@ package io.aeron.archive;
 
 import io.aeron.Aeron;
 import io.aeron.Counter;
+import io.aeron.ErrorCode;
 import io.aeron.ExclusivePublication;
+import io.aeron.exceptions.RegistrationException;
 
-class CreateReplayPublicationSession implements Session
+import static io.aeron.Aeron.NULL_VALUE;
+
+final class CreateReplayPublicationSession implements Session
 {
     private final long correlationId;
     private final long recordingId;
@@ -30,13 +34,15 @@ class CreateReplayPublicationSession implements Session
     private final int segmentFileLength;
     private final int termBufferLength;
     private final int streamId;
-    private long publicationRegistrationId;
+    private final String replayChannel;
+    private final int replayStreamId;
     private final int fileIoMaxLength;
-    private boolean isDone = false;
     private final Aeron aeron;
     private final Counter limitPositionCounter;
     private final ControlSession controlSession;
     private final ArchiveConductor conductor;
+    private long publicationRegistrationId = NULL_VALUE;
+    private boolean isDone = false;
 
     CreateReplayPublicationSession(
         final long correlationId,
@@ -48,7 +54,8 @@ class CreateReplayPublicationSession implements Session
         final int segmentFileLength,
         final int termBufferLength,
         final int streamId,
-        final long publicationRegistrationId,
+        final String replayChannel,
+        final int replayStreamId,
         final int fileIoMaxLength,
         final Counter limitPositionCounter,
         final Aeron aeron,
@@ -64,7 +71,8 @@ class CreateReplayPublicationSession implements Session
         this.segmentFileLength = segmentFileLength;
         this.termBufferLength = termBufferLength;
         this.streamId = streamId;
-        this.publicationRegistrationId = publicationRegistrationId;
+        this.replayChannel = replayChannel;
+        this.replayStreamId = replayStreamId;
         this.fileIoMaxLength = fileIoMaxLength;
         this.limitPositionCounter = limitPositionCounter;
         this.aeron = aeron;
@@ -77,7 +85,7 @@ class CreateReplayPublicationSession implements Session
      */
     public void close()
     {
-        if (Aeron.NULL_VALUE != publicationRegistrationId)
+        if (NULL_VALUE != publicationRegistrationId)
         {
             aeron.asyncRemovePublication(publicationRegistrationId);
         }
@@ -116,6 +124,12 @@ class CreateReplayPublicationSession implements Session
 
         if (!isDone)
         {
+            if (NULL_VALUE == publicationRegistrationId)
+            {
+                publicationRegistrationId = aeron.asyncAddExclusivePublication(replayChannel, replayStreamId);
+                workCount++;
+            }
+
             final ExclusivePublication publication;
             try
             {
@@ -123,17 +137,25 @@ class CreateReplayPublicationSession implements Session
             }
             catch (final Exception ex)
             {
+                publicationRegistrationId = NULL_VALUE;
+                if (ex instanceof RegistrationException rex &&
+                    ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE == rex.errorCode())
+                {
+                    return 0; // retry publication creation after idle
+                }
+
                 isDone = true;
-                final String msg = "failed to create replay publication: " + ex.getMessage();
+                conductor.onReplayEnd();
+                final String msg = "failed to create replay publication: " + ex;
                 controlSession.sendErrorResponse(correlationId, msg);
                 throw ex;
             }
 
             if (null != publication)
             {
-                publicationRegistrationId = Aeron.NULL_VALUE;
+                publicationRegistrationId = NULL_VALUE;
                 isDone = true;
-                workCount += 1;
+                workCount++;
 
                 conductor.newReplaySession(
                     correlationId,
