@@ -313,7 +313,7 @@ public final class Configuration
      * Default value for the limit of the number of driver managed resources that can be freed in a single duty cycle.
      */
     @Config
-    public static final int RESOURCE_FREE_LIMIT_DEFAULT = 10;
+    public static final int RESOURCE_FREE_LIMIT_DEFAULT = 1;
 
     /**
      * Property name for SO_RCVBUF setting on UDP sockets which must be sufficient for Bandwidth Delay Product (BDP).
