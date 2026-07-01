@@ -729,10 +729,10 @@ int aeron_driver_shared_do_work(void *clientd)
     aeron_driver_t *driver = (aeron_driver_t *)clientd;
     int work_count = 0;
 
-    work_count += aeron_driver_conductor_do_work(&driver->conductor);
-    work_count += aeron_driver_native_resource_agent_do_work(&driver->native_resource_agent);
     work_count += aeron_driver_sender_do_work(&driver->sender);
     work_count += aeron_driver_receiver_do_work(&driver->receiver);
+    work_count += aeron_driver_native_resource_agent_do_work(&driver->native_resource_agent);
+    work_count += aeron_driver_conductor_do_work(&driver->conductor);
 
     return work_count;
 }
@@ -741,10 +741,10 @@ void aeron_driver_shared_on_close(void *clientd)
 {
     aeron_driver_t *driver = (aeron_driver_t *)clientd;
 
-    aeron_driver_conductor_on_close(&driver->conductor);
-    aeron_driver_native_resource_agent_on_close(&driver->native_resource_agent);
     aeron_driver_sender_on_close(&driver->sender);
     aeron_driver_receiver_on_close(&driver->receiver);
+    aeron_driver_native_resource_agent_on_close(&driver->native_resource_agent);
+    aeron_driver_conductor_on_close(&driver->conductor);
 }
 
 int aeron_driver_shared_network_do_work(void *clientd)
@@ -1260,7 +1260,7 @@ int aeron_driver_close(aeron_driver_t *driver)
         return -1;
     }
 
-    for (int i = 0; i < AERON_AGENT_RUNNER_MAX; i++)
+    for (int i = AERON_AGENT_RUNNER_MAX - 1; i >= 0; i--)
     {
         if (aeron_agent_stop(&driver->runners[i]) < 0)
         {
@@ -1268,7 +1268,7 @@ int aeron_driver_close(aeron_driver_t *driver)
         }
     }
 
-    for (int i = 0; i < AERON_AGENT_RUNNER_MAX; i++)
+    for (int i = AERON_AGENT_RUNNER_MAX - 1; i >= 0; i--)
     {
         if (aeron_agent_close(&driver->runners[i]) < 0)
         {
