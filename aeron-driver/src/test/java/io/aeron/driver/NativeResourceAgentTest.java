@@ -91,37 +91,32 @@ class NativeResourceAgentTest
         final RawLog resource3 = mock(RawLog.class);
         when(resource3.free()).thenReturn(false, true);
         final RawLog resource4 = mock(RawLog.class);
-        when(resource4.free()).thenReturn(true);
+        when(resource4.free()).thenReturn(false, true);
         executor.onFreeLogBuffer(resource1);
         executor.onFreeLogBuffer(resource2);
         executor.onFreeLogBuffer(resource3);
         executor.onFreeLogBuffer(resource4);
 
-        assertEquals(3, executor.doWork());
-        assertEquals(10, executor.doWork());
         assertEquals(4, executor.doWork());
+        assertEquals(9, executor.doWork());
+        assertEquals(3, executor.doWork());
         assertEquals(5, executor.doWork());
 
         final InOrder inOrder = inOrder(
             nameResolver, task1, task2, task3, resource1, resource2, resource3, resource4, freeFailsCounter);
         inOrder.verify(nameResolver).doWork();
         inOrder.verify(task1).run();
-        inOrder.verify(resource1).free();
         inOrder.verify(resource2).free();
         inOrder.verify(freeFailsCounter).incrementRelease();
         inOrder.verify(resource3).free();
-        inOrder.verify(freeFailsCounter).incrementRelease();
+        inOrder.verify(resource4).free();
 
         inOrder.verify(nameResolver).doWork();
         inOrder.verify(task2).run();
-        inOrder.verify(resource4).free();
         inOrder.verify(resource2).free();
-        inOrder.verify(freeFailsCounter).incrementRelease();
-        inOrder.verify(resource3).free();
 
         inOrder.verify(nameResolver).doWork();
         inOrder.verify(task3).run();
-        inOrder.verify(resource2).free();
 
         inOrder.verify(nameResolver).doWork();
 
@@ -154,6 +149,50 @@ class NativeResourceAgentTest
         inOrder.verify(resource1).free();
         inOrder.verify(resource2).free();
         inOrder.verify(resource3).free();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldIncrementFreeFailsCounterIfDirectRemovalFails()
+    {
+        final RawLog rawLog = mock(RawLog.class);
+        executor.onFreeLogBuffer(rawLog);
+
+        final InOrder inOrder = inOrder(rawLog, freeFailsCounter, nameResolver);
+        inOrder.verify(rawLog).free();
+        inOrder.verify(freeFailsCounter).isClosed();
+        inOrder.verify(freeFailsCounter).incrementRelease();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldSkipIncrementFreeFailsCounterIfClosedDirectRemoval()
+    {
+        when(freeFailsCounter.isClosed()).thenReturn(true);
+
+        final RawLog rawLog = mock(RawLog.class);
+        executor.onFreeLogBuffer(rawLog);
+
+        final InOrder inOrder = inOrder(rawLog, freeFailsCounter, nameResolver);
+        inOrder.verify(rawLog).free();
+        inOrder.verify(freeFailsCounter).isClosed();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldRetryDeleteInDoWork()
+    {
+        final RawLog rawLog = mock(RawLog.class);
+        when(rawLog.free()).thenReturn(false, true);
+        executor.onFreeLogBuffer(rawLog);
+
+        executor.doWork();
+
+        final InOrder inOrder = inOrder(rawLog, freeFailsCounter, nameResolver);
+        inOrder.verify(rawLog).free();
+        inOrder.verify(freeFailsCounter).isClosed();
+        inOrder.verify(freeFailsCounter).incrementRelease();
+        inOrder.verify(rawLog).free();
         inOrder.verifyNoMoreInteractions();
     }
 

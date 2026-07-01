@@ -99,7 +99,7 @@ final class NativeResourceAgent implements Agent
         {
             result.ok(UdpChannel.parse(channel, nameResolver, isDestination));
         }
-        catch (final RuntimeException ex)
+        catch (final Exception ex)
         {
             result.error(ex);
         }
@@ -112,7 +112,7 @@ final class NativeResourceAgent implements Agent
         {
             result.ok(UdpChannel.resolve(endpoint, uriParamName, true, nameResolver));
         }
-        catch (final RuntimeException ex)
+        catch (final Exception ex)
         {
             result.error(ex);
         }
@@ -124,7 +124,7 @@ final class NativeResourceAgent implements Agent
         {
             result.ok(UdpChannel.destinationAddress(channel, nameResolver));
         }
-        catch (final RuntimeException ex)
+        catch (final Exception ex)
         {
             result.error(ex);
         }
@@ -132,7 +132,10 @@ final class NativeResourceAgent implements Agent
 
     void onFreeLogBuffer(final RawLog rawLog)
     {
-        logBuffersToFree.addLast(rawLog);
+        if (!rawLog.free())
+        {
+            onFreeFail(rawLog);
+        }
     }
 
     void onNewPublicationLog(
@@ -176,7 +179,7 @@ final class NativeResourceAgent implements Agent
             {
                 task.run();
             }
-            catch (final RuntimeException ex)
+            catch (final Exception ex)
             {
                 ctx.countedErrorHandler().onError(ex);
             }
@@ -203,11 +206,19 @@ final class NativeResourceAgent implements Agent
             }
             else
             {
-                freeFailsCounter.incrementRelease();
-                logBuffersToFree.addLast(rawLog);
+                onFreeFail(rawLog);
             }
         }
 
         return workCount;
+    }
+
+    private void onFreeFail(final RawLog rawLog)
+    {
+        if (!freeFailsCounter.isClosed())
+        {
+            freeFailsCounter.incrementRelease();
+        }
+        logBuffersToFree.addLast(rawLog);
     }
 }
