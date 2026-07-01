@@ -225,7 +225,7 @@ public final class MediaDriver implements AutoCloseable
                         errorHandler,
                         errorCounter,
                         new NamedCompositeAgent(
-                            ctx.aeronDirectoryName(), sender, receiver, conductor, nativeResourceAgent));
+                            ctx.aeronDirectoryName(), sender, receiver, nativeResourceAgent, conductor));
                     sharedRunner = null;
                     sharedNetworkRunner = null;
                     conductorRunner = null;
@@ -242,12 +242,12 @@ public final class MediaDriver implements AutoCloseable
                         errorHandler,
                         errorCounter,
                         new NamedCompositeAgent(
-                            ctx.aeronDirectoryName(), sender, receiver, conductor, nativeResourceAgent));
+                            ctx.aeronDirectoryName(), sender, receiver, nativeResourceAgent, conductor));
+                    sharedInvoker = null;
                     sharedNetworkRunner = null;
                     conductorRunner = null;
                     receiverRunner = null;
                     senderRunner = null;
-                    sharedInvoker = null;
                     nativeResourceAgentRunner = null;
                     break;
                 }
@@ -266,10 +266,10 @@ public final class MediaDriver implements AutoCloseable
                         errorHandler,
                         errorCounter,
                         nativeResourceAgent);
-                    sharedRunner = null;
-                    receiverRunner = null;
-                    senderRunner = null;
                     sharedInvoker = null;
+                    sharedRunner = null;
+                    senderRunner = null;
+                    receiverRunner = null;
                     break;
                 }
 
@@ -285,9 +285,9 @@ public final class MediaDriver implements AutoCloseable
                         errorHandler,
                         errorCounter,
                         nativeResourceAgent);
-                    sharedNetworkRunner = null;
                     sharedRunner = null;
                     sharedInvoker = null;
+                    sharedNetworkRunner = null;
                     break;
                 }
             }
@@ -433,12 +433,12 @@ public final class MediaDriver implements AutoCloseable
         try
         {
             CloseHelper.closeAll(
-                nativeResourceAgentRunner,
                 sharedInvoker,
                 sharedRunner,
                 sharedNetworkRunner,
-                receiverRunner,
                 senderRunner,
+                receiverRunner,
+                nativeResourceAgentRunner,
                 conductorRunner);
         }
         finally
@@ -4323,7 +4323,7 @@ public final class MediaDriver implements AutoCloseable
                     {
                         throw new IllegalArgumentException(
                             "applicationSpecificFeedback length must be equal to " + SIZE_OF_LONG +
-                                " bytes: length=" + applicationSpecificFeedback.length);
+                            " bytes: length=" + applicationSpecificFeedback.length);
                     }
 
                     final UnsafeBuffer buffer = new UnsafeBuffer(applicationSpecificFeedback);
