@@ -220,7 +220,7 @@ typedef struct aeron_driver_context_stct
     uint32_t receiver_io_vector_capacity;                   /* aeron.receiver.io.vector.capacity = 4 */
     uint32_t sender_io_vector_capacity;                     /* aeron.sender.io.vector.capacity = 4 */
     uint32_t network_publication_max_messages_per_send;     /* aeron.network.publication.max.messages.per.send = 4 */
-    uint32_t resource_free_limit;                           /* aeron.driver.resource.free.limit = 10 */
+    uint32_t resource_free_limit;                           /* aeron.driver.resource.free.limit = 1 */
     uint32_t max_resend;                                    /* aeron.max.resend = 16 */
 
     int32_t conductor_cpu_affinity_no;                      /* aeron.conductor.cpu.affinity = -1 */
