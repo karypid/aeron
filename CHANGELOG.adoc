@@ -90,7 +90,7 @@ a specific error.
 * **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.39.0[SBE 1.39.0].
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
-* **[Java]** Upgrade to `ByteBuddy` 1.18.10.
+* **[Java]** Upgrade to `ByteBuddy` 1.18.11.
 * **[Java]** Upgrade to `Shadow` 9.4.3.
 * **[Java]** Upgrade to `ASM` 9.10.1.
 * **[C]** Upgrade to `HdrHistogram` 0.11.10.
