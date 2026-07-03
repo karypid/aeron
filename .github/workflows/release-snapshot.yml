@@ -40,7 +40,7 @@ jobs:
         with:
           cache-provider: basic
       - name: Publish with Gradle
-        run: ./gradlew publish
+        run: ./gradlew publish uploadArtifactsToCentralPortal
         env:
           SIGNING_GPG_SECRET_KEY: ${{ secrets.GPG_RSA_SIGN_KEY }}
           SIGNING_GPG_PASSWORD: ${{ secrets.GPG_RSA_SIGN_KEYPASS }}
