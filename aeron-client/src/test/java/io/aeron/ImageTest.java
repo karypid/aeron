@@ -104,6 +104,7 @@ class ImageTest
     }
 
     @Test
+    @SuppressWarnings("removal")
     void shouldAllowValidPosition()
     {
         final Image image = createImage();
@@ -117,6 +118,7 @@ class ImageTest
     }
 
     @Test
+    @SuppressWarnings("removal")
     void shouldNotAdvancePastEndOfTerm()
     {
         final Image image = createImage();
@@ -728,6 +730,7 @@ class ImageTest
     }
 
     @Test
+    @SuppressWarnings("removal")
     void shouldExitControlledPeekIfImageIsClosed()
     {
         final long initialPosition = computePosition(INITIAL_TERM_ID, 0, POSITION_BITS_TO_SHIFT, INITIAL_TERM_ID);

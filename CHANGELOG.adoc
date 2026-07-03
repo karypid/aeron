@@ -52,6 +52,12 @@ resolution.
 
 * **Breaking:** **[Driver/C]** `aeron_spsc_rb_writev` was removed.
 
+* **[Client]** Image `controlledPeek` APIs are deprecated for removal and will be removed in the next release
+(i.e. *1.53.0*):
+**  `io.aeron.Image.controlledPeek` and `io.aeron.Image.position(long)`.
+** `aeron_image_controlled_peek` and `aeron_image_set_position`.
+** `aeron::Image::controlledPeek` and `aeron::Image::position`.
+
 === Changelog
 
 * **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])

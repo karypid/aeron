@@ -30,8 +30,13 @@ import org.agrona.concurrent.status.Position;
 
 import java.nio.channels.FileChannel;
 
-import static io.aeron.logbuffer.ControlledFragmentHandler.Action.*;
-import static io.aeron.logbuffer.FrameDescriptor.*;
+import static io.aeron.logbuffer.ControlledFragmentHandler.Action.ABORT;
+import static io.aeron.logbuffer.ControlledFragmentHandler.Action.BREAK;
+import static io.aeron.logbuffer.ControlledFragmentHandler.Action.COMMIT;
+import static io.aeron.logbuffer.FrameDescriptor.END_FRAG_FLAG;
+import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
+import static io.aeron.logbuffer.FrameDescriptor.frameLengthVolatile;
+import static io.aeron.logbuffer.FrameDescriptor.isPaddingFrame;
 import static io.aeron.protocol.DataHeaderFlyweight.HEADER_LENGTH;
 import static io.aeron.protocol.DataHeaderFlyweight.TERM_ID_FIELD_OFFSET;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
@@ -231,7 +236,9 @@ public final class Image
      * Set the subscriber position for this {@link Image} to indicate where it has been consumed to.
      *
      * @param newPosition for the consumption point.
+     * @deprecated Will be removed in {@code 1.53.0}.
      */
+    @Deprecated(since = "1.52.0", forRemoval = true)
     public void position(final long newPosition)
     {
         if (!isClosed)
@@ -672,7 +679,9 @@ public final class Image
      * @return the resulting position after the scan terminates which is a complete message.
      * @see ControlledFragmentAssembler
      * @see ImageControlledFragmentAssembler
+     * @deprecated Will be removed in {@code 1.53.0}.
      */
+    @Deprecated(since = "1.52.0", forRemoval = true)
     public long controlledPeek(
         final long initialPosition, final ControlledFragmentHandler handler, final long limitPosition)
     {
