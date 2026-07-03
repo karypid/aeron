@@ -203,6 +203,8 @@ object is destroyed.
 TIP: The workaround is to explicitly set `aeron.driver.resolver.bootstrap.neighbor.resolution.interval` explicitly, e.g.
 `-Daeron.driver.resolver.bootstrap.neighbor.resolution.interval=10s` or
 `AERON_DRIVER_RESOLVER_BOOTSTRAP_NEIGHBOR_RESOLUTION_INTERVAL=10s`.
++
+NOTE: The issue was fixed in <<1.51.1 (2026-06-30)>>.
 
 === Changelog
 * **[C]** Removed `aeron_async_cmd_free` API, i.e. free async structs automatically when:
