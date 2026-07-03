@@ -75,9 +75,16 @@ public final class DataTransportPoller extends UdpTransportPoller
     {
         for (final ChannelAndTransport transport : channelAndTransports)
         {
-            final ReceiveChannelEndpoint receiveChannelEndpoint = transport.channelEndpoint;
-            cancelSingle(transport);
-            receiveChannelEndpoint.close();
+            try
+            {
+                final ReceiveChannelEndpoint receiveChannelEndpoint = transport.channelEndpoint;
+                cancelSingle(transport);
+                receiveChannelEndpoint.close();
+            }
+            catch (final Exception ex)
+            {
+                errorHandler.onError(ex);
+            }
         }
         super.close();
     }

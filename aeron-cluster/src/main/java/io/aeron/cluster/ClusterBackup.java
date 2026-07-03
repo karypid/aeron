@@ -309,9 +309,8 @@ public final class ClusterBackup implements AutoCloseable
      */
     public void close()
     {
-        final CountedErrorHandler countedErrorHandler = ctx.countedErrorHandler();
-        CloseHelper.close(countedErrorHandler, agentRunner);
-        CloseHelper.close(countedErrorHandler, agentInvoker);
+        CloseHelper.close(agentRunner);
+        CloseHelper.close(agentInvoker);
     }
 
     /**
@@ -1961,7 +1960,7 @@ public final class ClusterBackup implements AutoCloseable
         {
             if (ownsAeronClient)
             {
-                CloseHelper.close(countedErrorHandler, aeron);
+                CloseHelper.close(aeron);
             }
             else if (!aeron.isClosed())
             {

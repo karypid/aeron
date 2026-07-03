@@ -288,12 +288,19 @@ abstract class ArchiveConductor
             {
                 for (final Subscription subscription : recordingSubscriptionByKeyMap.values())
                 {
-                    subscription.close();
+                    try
+                    {
+                        subscription.close();
+                    }
+                    catch (final Exception ex)
+                    {
+                        errorHandler.onError(ex);
+                    }
                 }
 
-                CloseHelper.close(localControlSubscription);
-                CloseHelper.close(controlSubscription);
-                CloseHelper.close(recordingEventsProxy);
+                CloseHelper.close(errorHandler, localControlSubscription);
+                CloseHelper.close(errorHandler, controlSubscription);
+                CloseHelper.close(errorHandler, recordingEventsProxy);
             }
         }
 

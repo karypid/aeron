@@ -83,8 +83,15 @@ public final class ControlTransportPoller extends UdpTransportPoller
     {
         for (final Transport transport : transports)
         {
-            cancelSingleKey(transport.selectionKey);
-            transport.sendChannelEndpoint.close();
+            try
+            {
+                cancelSingleKey(transport.selectionKey);
+                transport.sendChannelEndpoint.close();
+            }
+            catch (final Exception ex)
+            {
+                errorHandler.onError(ex);
+            }
         }
         super.close();
     }
