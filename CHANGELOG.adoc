@@ -1,6 +1,6 @@
 = Aeron Releases
 
-== 1.52.0 (Unreleased)
+== 1.52.0 (2026-07-03)
 
 === New & Noteworthy
 
@@ -86,6 +86,8 @@ a specific error.
 * **[Archive]** Retry the creation of the control subscription when a temporary failure occurs.
 * **[Archive]** Retry creation of the replay publication.
 * **[Archive]** Show `clientInfo` of the `CMD_IN_AUTH_CONNECT` agent logging event.
+* **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.5.0[Agrona 2.5.0].
+* **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.39.0[SBE 1.39.0].
 * **[Java]** Upgrade to `Gradle` 9.6.1.
 * **[Java]** Upgrade to `JUnit` 6.1.1.
 * **[Java]** Upgrade to `ByteBuddy` 1.18.10.
