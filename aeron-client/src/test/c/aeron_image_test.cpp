@@ -220,13 +220,6 @@ public:
     }
 
     template<typename F>
-    int imageControlledPeek(F &&handler, int64_t initial_position, int64_t limit_position)
-    {
-        m_controlled_handler = handler;
-        return aeron_image_controlled_peek(m_image, initial_position, controlled_fragment_handler, this, limit_position);
-    }
-
-    template<typename F>
     int imageBoundedPoll(F &&handler, int64_t max_position, size_t fragment_limit)
     {
         m_handler = handler;
@@ -406,32 +399,6 @@ TEST_F(ImageTest, shouldNotReadLastMessageWhenPadding)
     EXPECT_EQ(m_sub_pos, m_term_length);
 }
 
-TEST_F(ImageTest, shouldAllowValidPosition)
-{
-    createImage();
-
-    int64_t expectedPosition = m_term_length - 32;
-
-    m_sub_pos = expectedPosition;
-    ASSERT_EQ(aeron_image_position(m_image), expectedPosition);
-
-    ASSERT_EQ(aeron_image_set_position(m_image, m_term_length), 0);
-    EXPECT_EQ(aeron_image_position(m_image), m_term_length);
-}
-
-TEST_F(ImageTest, shouldNotAdvancePastEndOfTerm)
-{
-    createImage();
-
-    int64_t expectedPosition = m_term_length - 32;
-
-    m_sub_pos = expectedPosition;
-    ASSERT_EQ(aeron_image_position(m_image), expectedPosition);
-
-    ASSERT_EQ(aeron_image_set_position(m_image, m_term_length + 32), -1);
-    EXPECT_EQ(aeron_image_position(m_image), expectedPosition);
-}
-
 TEST_F(ImageTest, shouldReportCorrectPositionOnReception)
 {
     createImage();
@@ -516,23 +483,6 @@ TEST_F(ImageTest, shouldPollNoFragmentsToControlledFragmentHandler)
     EXPECT_EQ(static_cast<size_t>(m_sub_pos), 0u);
 }
 
-TEST_F(ImageTest, shouldPeekNoFragmentsToControlledFragmentHandler)
-{
-    createImage();
-
-    bool called = false;
-    auto handler = [&](const uint8_t *, size_t length, aeron_header_t *header)
-        -> aeron_controlled_fragment_handler_action_t
-    {
-        called = true;
-        return AERON_ACTION_CONTINUE;
-    };
-
-    EXPECT_EQ(imageControlledPeek(handler, 0, INT64_MAX), 0);
-    EXPECT_FALSE(called);
-    EXPECT_EQ(m_sub_pos, 0);
-}
-
 TEST_F(ImageTest, shouldPollOneFragmentToControlledFragmentHandlerOnContinue)
 {
     createImage();
@@ -554,60 +504,6 @@ TEST_F(ImageTest, shouldPollOneFragmentToControlledFragmentHandlerOnContinue)
 
     EXPECT_EQ(imageControlledPoll(handler, std::numeric_limits<size_t>::max()), 1);
     EXPECT_EQ(m_sub_pos, alignedMessageLength);
-}
-
-TEST_F(ImageTest, shouldPeekOneFragmentToControlledFragmentHandlerOnContinue)
-{
-    createImage();
-
-    const size_t messageLength = 120;
-    const int64_t initialPosition = aeron_logbuffer_compute_position(
-        INITIAL_TERM_ID, 0, m_position_bits_to_shift, INITIAL_TERM_ID);
-    const int64_t alignedMessageLength =
-        AERON_ALIGN(messageLength + AERON_DATA_HEADER_LENGTH, AERON_LOGBUFFER_FRAME_ALIGNMENT);
-
-    m_sub_pos = initialPosition;
-
-    appendMessage(m_sub_pos, messageLength);
-
-    auto handler = [&](const uint8_t *buffer, size_t length, aeron_header_t *header)
-        -> aeron_controlled_fragment_handler_action_t
-    {
-        EXPECT_EQ(buffer, termBuffer(0) + m_sub_pos + AERON_DATA_HEADER_LENGTH);
-        EXPECT_EQ(length, messageLength);
-        EXPECT_EQ(header->frame->frame_header.type, AERON_HDR_TYPE_DATA);
-        return AERON_ACTION_CONTINUE;
-    };
-
-    EXPECT_EQ(imageControlledPeek(handler, initialPosition, INT64_MAX), initialPosition + alignedMessageLength);
-    EXPECT_EQ(m_sub_pos, initialPosition);
-}
-
-TEST_F(ImageTest, shouldStopPeekOneFragmentToControlledFragmentHandlerIfImageIsClosed)
-{
-    createImage();
-
-    const size_t messageLength = 120;
-    const int64_t initialPosition = aeron_logbuffer_compute_position(
-        INITIAL_TERM_ID, 0, m_position_bits_to_shift, INITIAL_TERM_ID);
-    const int64_t alignedMessageLength =
-        AERON_ALIGN(messageLength + AERON_DATA_HEADER_LENGTH, AERON_LOGBUFFER_FRAME_ALIGNMENT);
-
-    m_sub_pos = initialPosition;
-
-    appendMessage(initialPosition, messageLength);
-    appendMessage(initialPosition + alignedMessageLength, messageLength);
-
-    auto handler = [&](const uint8_t *buffer, size_t length, aeron_header_t *header)
-        -> aeron_controlled_fragment_handler_action_t
-    {
-        aeron_image_close(m_image);
-        return AERON_ACTION_CONTINUE;
-    };
-
-    EXPECT_EQ(imageControlledPeek(handler, initialPosition, INT64_MAX), initialPosition + alignedMessageLength);
-    EXPECT_EQ(true, aeron_image_is_closed(m_image));
-    EXPECT_EQ(m_sub_pos, initialPosition);
 }
 
 TEST_F(ImageTest, shouldNotPollOneFragmentToControlledFragmentHandlerOnAbort)

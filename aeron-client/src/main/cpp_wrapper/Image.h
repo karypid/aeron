@@ -257,20 +257,6 @@ public:
     }
 
     /**
-     * Set the subscriber position for this Image to indicate where it has been consumed to.
-     *
-     * @param newPosition for the consumption point.
-     * @deprecated Will be removed in <code>1.53.0</code>.
-     */
-    inline void position(std::int64_t newPosition)
-    {
-        if (aeron_image_set_position(m_image, newPosition) < 0)
-        {
-            AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
-        }
-    }
-
-    /**
      * Is the current consumed position at the end of the stream?
      *
      * @return true if at the end of the stream or false if not.
@@ -435,38 +421,6 @@ public:
         }
 
         return numFragments;
-    }
-
-    /**
-     * Peek for new messages in a stream by scanning forward from an initial position. If new messages are found then
-     * they will be delivered to the controlled_poll_fragment_handler_t up to a limited position.
-     * <p>
-     * To assemble messages that span multiple fragments then use ControlledFragmentAssembler. Scans must also
-     * start at the beginning of a message so that the assembler is reset.
-     *
-     * @param initialPosition from which to peek forward.
-     * @param fragmentHandler to which message fragments are delivered.
-     * @param limitPosition   up to which can be scanned.
-     * @return the resulting position after the scan terminates which is a complete message.
-     * @see controlled_poll_fragment_handler_t
-     * @deprecated Will be removed in <code>1.53.0</code>.
-     */
-    template<typename F>
-    inline std::int64_t controlledPeek(std::int64_t initialPosition, F &&fragmentHandler, std::int64_t limitPosition)
-    {
-        using handler_type = typename std::remove_reference<F>::type;
-        handler_type &handler = fragmentHandler;
-        void *handler_ptr = const_cast<void *>(reinterpret_cast<const void *>(&handler));
-
-        std::int64_t bytesPeeked = aeron_image_controlled_peek(
-            m_image, initialPosition, doControlledPoll<handler_type>, handler_ptr, limitPosition);
-
-        if (bytesPeeked < 0)
-        {
-            AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
-        }
-
-        return bytesPeeked;
     }
 
     /**

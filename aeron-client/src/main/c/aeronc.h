@@ -2190,15 +2190,6 @@ int aeron_image_constants(aeron_image_t *image, aeron_image_constants_t *constan
 int64_t aeron_image_position(aeron_image_t *image);
 
 /**
- * Set the subscriber position for this image to indicate where it has been consumed to.
- *
- * @param image to set the position of.
- * @param new_position for the consumption point.
- * @deprecated Will be removed in <code>1.53.0</code>.
- */
-int aeron_image_set_position(aeron_image_t *image, int64_t position);
-
-/**
  * Is the current consumed position at the end of the stream?
  *
  * @param image to check.
@@ -2302,28 +2293,6 @@ int aeron_image_bounded_controlled_poll(
     void *clientd,
     int64_t limit_position,
     size_t fragment_limit);
-
-/**
- * Peek for new messages in a stream by scanning forward from an initial position. If new messages are found then
- * they will be delivered to the handler up to a limited position.
- * <p>
- * Use a controlled fragment assembler to assemble messages which span multiple fragments. Scans must also
- * start at the beginning of a message so that the assembler is reset.
- *
- * @param image to peek.
- * @param initial_position from which to peek forward.
- * @param handler to which message fragments are delivered.
- * @param clientd to pass to the handler.
- * @param limit_position up to which can be scanned.
- * @return the resulting position after the scan terminates which is a complete message or -1 for error.
- * @deprecated Will be removed in <code>1.53.0</code>.
- */
-int64_t aeron_image_controlled_peek(
-    aeron_image_t *image,
-    int64_t initial_position,
-    aeron_controlled_fragment_handler_t handler,
-    void *clientd,
-    int64_t limit_position);
 
 /**
  * Poll for new messages in a stream. If new messages are found beyond the last consumed position then they
