@@ -2194,6 +2194,7 @@ int64_t aeron_image_position(aeron_image_t *image);
  *
  * @param image to set the position of.
  * @param new_position for the consumption point.
+ * @deprecated Will be removed in <code>1.53.0</code>.
  */
 int aeron_image_set_position(aeron_image_t *image, int64_t position);
 
@@ -2315,6 +2316,7 @@ int aeron_image_bounded_controlled_poll(
  * @param clientd to pass to the handler.
  * @param limit_position up to which can be scanned.
  * @return the resulting position after the scan terminates which is a complete message or -1 for error.
+ * @deprecated Will be removed in <code>1.53.0</code>.
  */
 int64_t aeron_image_controlled_peek(
     aeron_image_t *image,

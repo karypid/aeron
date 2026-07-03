@@ -260,6 +260,7 @@ public:
      * Set the subscriber position for this Image to indicate where it has been consumed to.
      *
      * @param newPosition for the consumption point.
+     * @deprecated Will be removed in <code>1.53.0</code>.
      */
     inline void position(std::int64_t newPosition)
     {
@@ -448,6 +449,7 @@ public:
      * @param limitPosition   up to which can be scanned.
      * @return the resulting position after the scan terminates which is a complete message.
      * @see controlled_poll_fragment_handler_t
+     * @deprecated Will be removed in <code>1.53.0</code>.
      */
     template<typename F>
     inline std::int64_t controlledPeek(std::int64_t initialPosition, F &&fragmentHandler, std::int64_t limitPosition)
