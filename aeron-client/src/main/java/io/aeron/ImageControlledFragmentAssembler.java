@@ -32,7 +32,6 @@ import static io.aeron.logbuffer.FrameDescriptor.*;
  * The {@link Header} passed to the delegate on assembling a message will be that of the last fragment.
  *
  * @see Image#controlledPoll(ControlledFragmentHandler, int)
- * @see Image#controlledPeek(long, ControlledFragmentHandler, long)
  */
 public class ImageControlledFragmentAssembler implements ControlledFragmentHandler
 {

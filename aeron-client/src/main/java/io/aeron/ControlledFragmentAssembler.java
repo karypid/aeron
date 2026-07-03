@@ -37,7 +37,6 @@ import static io.aeron.logbuffer.FrameDescriptor.*;
  *
  * @see Subscription#controlledPoll(ControlledFragmentHandler, int)
  * @see Image#controlledPoll(ControlledFragmentHandler, int)
- * @see Image#controlledPeek(long, ControlledFragmentHandler, long)
  */
 public class ControlledFragmentAssembler implements ControlledFragmentHandler
 {

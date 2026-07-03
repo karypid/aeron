@@ -1,5 +1,18 @@
 = Aeron Releases
 
+== 1.53.0 (unreleased)
+
+=== New & Noteworthy
+
+* **Breaking:** **[Client]** Image `controlledPeek` APIs were removed:
+**  `io.aeron.Image.controlledPeek` and `io.aeron.Image.position(long)`.
+** `aeron_image_controlled_peek` and `aeron_image_set_position`.
+** `aeron::Image::controlledPeek` and `aeron::Image::position`.
+
+=== Changelog
+
+* **[Client/Java]** Remove `Image#controlledPeek` APIs.
+
 == 1.52.0 (2026-07-03)
 
 === New & Noteworthy

@@ -33,7 +33,6 @@ import java.nio.channels.FileChannel;
 import static io.aeron.logbuffer.ControlledFragmentHandler.Action.ABORT;
 import static io.aeron.logbuffer.ControlledFragmentHandler.Action.BREAK;
 import static io.aeron.logbuffer.ControlledFragmentHandler.Action.COMMIT;
-import static io.aeron.logbuffer.FrameDescriptor.END_FRAG_FLAG;
 import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
 import static io.aeron.logbuffer.FrameDescriptor.frameLengthVolatile;
 import static io.aeron.logbuffer.FrameDescriptor.isPaddingFrame;
@@ -230,22 +229,6 @@ public final class Image
         }
 
         return subscriberPosition.get();
-    }
-
-    /**
-     * Set the subscriber position for this {@link Image} to indicate where it has been consumed to.
-     *
-     * @param newPosition for the consumption point.
-     * @deprecated Will be removed in {@code 1.53.0}.
-     */
-    @Deprecated(since = "1.52.0", forRemoval = true)
-    public void position(final long newPosition)
-    {
-        if (!isClosed)
-        {
-            validatePosition(newPosition);
-            subscriberPosition.setRelease(newPosition);
-        }
     }
 
     /**
@@ -664,99 +647,6 @@ public final class Image
         }
 
         return fragmentsRead;
-    }
-
-    /**
-     * Peek for new messages in a stream by scanning forward from an initial position. If new messages are found then
-     * they will be delivered to the {@link ControlledFragmentHandler} up to a limited position.
-     * <p>
-     * Use a {@link ControlledFragmentAssembler} to assemble messages which span multiple fragments. Scans must also
-     * start at the beginning of a message so that the assembler is reset.
-     *
-     * @param initialPosition from which to peek forward.
-     * @param handler         to which message fragments are delivered.
-     * @param limitPosition   up to which can be scanned.
-     * @return the resulting position after the scan terminates which is a complete message.
-     * @see ControlledFragmentAssembler
-     * @see ImageControlledFragmentAssembler
-     * @deprecated Will be removed in {@code 1.53.0}.
-     */
-    @Deprecated(since = "1.52.0", forRemoval = true)
-    public long controlledPeek(
-        final long initialPosition, final ControlledFragmentHandler handler, final long limitPosition)
-    {
-        if (isClosed)
-        {
-            return initialPosition;
-        }
-
-        validatePosition(initialPosition);
-        if (initialPosition >= limitPosition)
-        {
-            return initialPosition;
-        }
-
-        int initialOffset = (int)initialPosition & termLengthMask;
-        int offset = initialOffset;
-        long position = initialPosition;
-        final UnsafeBuffer termBuffer = activeTermBuffer(initialPosition);
-        final Header header = this.header;
-        final int limitOffset = (int)Math.min(termBuffer.capacity(), (limitPosition - initialPosition) + offset);
-        header.buffer(termBuffer);
-        long resultingPosition = initialPosition;
-
-        try
-        {
-            while (offset < limitOffset && !isClosed)
-            {
-                final int length = frameLengthVolatile(termBuffer, offset);
-                if (length <= 0)
-                {
-                    break;
-                }
-
-                final int frameOffset = offset;
-                offset += BitUtil.align(length, FRAME_ALIGNMENT);
-
-                if (isPaddingFrame(termBuffer, frameOffset))
-                {
-                    position += (offset - initialOffset);
-                    initialOffset = offset;
-                    resultingPosition = position;
-
-                    continue;
-                }
-
-                header.offset(frameOffset);
-
-                final Action action = handler.onFragment(
-                    termBuffer, frameOffset + HEADER_LENGTH, length - HEADER_LENGTH, header);
-
-                if (ABORT == action)
-                {
-                    break;
-                }
-
-                position += (offset - initialOffset);
-                initialOffset = offset;
-
-                if ((header.flags() & END_FRAG_FLAG) == END_FRAG_FLAG)
-                {
-                    resultingPosition = position;
-                }
-
-                if (BREAK == action)
-                {
-                    break;
-                }
-            }
-        }
-        catch (final Exception ex)
-        {
-            errorHandler.onError(ex);
-        }
-
-        return resultingPosition;
     }
 
     /**

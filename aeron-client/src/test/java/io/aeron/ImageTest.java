@@ -15,8 +15,13 @@
  */
 package io.aeron;
 
-import io.aeron.logbuffer.*;
+import io.aeron.logbuffer.ControlledFragmentHandler;
 import io.aeron.logbuffer.ControlledFragmentHandler.Action;
+import io.aeron.logbuffer.FragmentHandler;
+import io.aeron.logbuffer.FrameDescriptor;
+import io.aeron.logbuffer.Header;
+import io.aeron.logbuffer.LogBufferDescriptor;
+import io.aeron.logbuffer.TermRebuilder;
 import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.HeaderFlyweight;
 import org.agrona.DirectBuffer;
@@ -26,20 +31,31 @@ import org.agrona.concurrent.status.AtomicLongPosition;
 import org.agrona.concurrent.status.Position;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.AdditionalMatchers;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
-import static io.aeron.logbuffer.LogBufferDescriptor.*;
+import static io.aeron.logbuffer.LogBufferDescriptor.LOG_META_DATA_LENGTH;
+import static io.aeron.logbuffer.LogBufferDescriptor.PARTITION_COUNT;
+import static io.aeron.logbuffer.LogBufferDescriptor.computePosition;
+import static io.aeron.logbuffer.LogBufferDescriptor.indexByTerm;
 import static io.aeron.protocol.DataHeaderFlyweight.HEADER_LENGTH;
 import static java.nio.ByteBuffer.allocateDirect;
 import static org.agrona.BitUtil.align;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ImageTest
 {
@@ -101,33 +117,6 @@ class ImageTest
         assertTrue(image.isClosed());
         assertThat(image.poll(mockFragmentHandler, Integer.MAX_VALUE), is(0));
         assertThat(image.position(), is(0L));
-    }
-
-    @Test
-    @SuppressWarnings("removal")
-    void shouldAllowValidPosition()
-    {
-        final Image image = createImage();
-        final long expectedPosition = TERM_BUFFER_LENGTH - 32;
-
-        position.setRelease(expectedPosition);
-        assertThat(image.position(), is(expectedPosition));
-
-        image.position(TERM_BUFFER_LENGTH);
-        assertThat(image.position(), is((long)TERM_BUFFER_LENGTH));
-    }
-
-    @Test
-    @SuppressWarnings("removal")
-    void shouldNotAdvancePastEndOfTerm()
-    {
-        final Image image = createImage();
-        final long expectedPosition = TERM_BUFFER_LENGTH - 32;
-
-        position.setRelease(expectedPosition);
-        assertThat(image.position(), is(expectedPosition));
-
-        assertThrows(IllegalArgumentException.class, () -> image.position(TERM_BUFFER_LENGTH + 32));
     }
 
     @Test
@@ -727,33 +716,6 @@ class ImageTest
         inOrder.verify(position, times(2)).get();
         inOrder.verify(position).getVolatile();
         inOrder.verifyNoMoreInteractions();
-    }
-
-    @Test
-    @SuppressWarnings("removal")
-    void shouldExitControlledPeekIfImageIsClosed()
-    {
-        final long initialPosition = computePosition(INITIAL_TERM_ID, 0, POSITION_BITS_TO_SHIFT, INITIAL_TERM_ID);
-        position.setRelease(initialPosition);
-        final Image image = createImage();
-
-        insertDataFrame(INITIAL_TERM_ID, offsetForFrame(0));
-        insertDataFrame(INITIAL_TERM_ID, offsetForFrame(1));
-        insertDataFrame(INITIAL_TERM_ID, offsetForFrame(2));
-
-        final long resultingPosition = image.controlledPeek(
-            initialPosition,
-            (buffer, offset, length, header) ->
-            {
-                image.close();
-                return Action.CONTINUE;
-            },
-            Long.MAX_VALUE);
-        assertThat(resultingPosition, is(initialPosition + offsetForFrame(1)));
-        assertThat(image.isClosed(), is(true));
-
-        verify(position).setRelease(initialPosition);
-        verify(position, never()).setRelease(AdditionalMatchers.not(eq(initialPosition)));
     }
 
     @Test
