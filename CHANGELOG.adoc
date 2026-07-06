@@ -13,7 +13,12 @@
 
 * **[Client/Java]** Remove `Image#controlledPeek` APIs.
 * **[Client/C/C{plus}{plus} Wrapper]** Remove `aeron_image_set_position` and `aeron_image_controlled_peek` APIs.
+* **[Archive]** Abort `ControlSession` on non-recoverable exception.
 * **[Java]** Upgrade to `Shadow` 9.5.0.
+
+== 1.52.1 (unreleased)
+
+* **[Archive]** Abort `ControlSession` on non-recoverable exception.
 
 == 1.52.0 (2026-07-03)
 
