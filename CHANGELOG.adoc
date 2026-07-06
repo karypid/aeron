@@ -12,6 +12,7 @@
 === Changelog
 
 * **[Client/Java]** Remove `Image#controlledPeek` APIs.
+* **[Client/C/C{plus}{plus} Wrapper]** Remove `aeron_image_set_position` and `aeron_image_controlled_peek` APIs.
 
 == 1.52.0 (2026-07-03)
 
