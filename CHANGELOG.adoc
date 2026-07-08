@@ -16,7 +16,7 @@
 * **[Archive]** Abort `ControlSession` on non-recoverable exception.
 * **[Java]** Upgrade to `Shadow` 9.5.1.
 
-== 1.52.1 (unreleased)
+== 1.52.1 (2026-07-08)
 
 * **[Archive]** Abort `ControlSession` on non-recoverable exception.
 
