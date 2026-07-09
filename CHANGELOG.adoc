@@ -78,6 +78,14 @@ resolution.
 ** `aeron_image_controlled_peek` and `aeron_image_set_position`.
 ** `aeron::Image::controlledPeek` and `aeron::Image::position`.
 
+=== Known issues
+
+* **[Driver/C]** CPU affinity for the background thread (`aeron.driver.native.resource.agent.cpu.affinity`) is not
+applied correctly when set. Furthermore, native resource agent thread ends sharing the same core as the `conductor`
+thread when that is configured.
++
+Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
+
 === Changelog
 
 * **[Driver/C]** Set default `resolver_bootstrap_neighbor_resolution_interval` correctly. (https://github.com/aeron-io/aeron/issues/2035[#2035])
