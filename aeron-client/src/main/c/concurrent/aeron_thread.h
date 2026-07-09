@@ -30,6 +30,7 @@ int aeron_thread_get_name(char *name_buf, size_t name_buf_size);
 void aeron_nano_sleep(uint64_t nanoseconds);
 void aeron_micro_sleep(unsigned int microseconds);
 int aeron_thread_set_affinity(const char *name, uint8_t cpu_affinity_no);
+int aeron_thread_get_affinity(uint8_t *cpu_affinity);
 
 #if defined(AERON_COMPILER_GCC)
 

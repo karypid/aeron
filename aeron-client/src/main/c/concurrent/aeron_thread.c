@@ -22,7 +22,6 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
-#include <assert.h>
 #include "aeron_alloc.h"
 #include "concurrent/aeron_thread.h"
 #include "util/aeron_bitutil.h"
@@ -97,13 +96,38 @@ int aeron_thread_set_affinity(const char *name, uint8_t cpu_affinity_no)
 {
 #if defined(__linux__)
     cpu_set_t mask;
-    const size_t size = sizeof(mask);
     CPU_ZERO(&mask);
     CPU_SET(cpu_affinity_no, &mask);
-    if (sched_setaffinity(0, size, &mask) < 0)
+    if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
     {
         AERON_SET_ERR(errno, "failed to set thread affinity name=%s, cpu_affinity_no=%" PRIu8, name, cpu_affinity_no);
         return -1;
+    }
+    return 0;
+#else
+    AERON_SET_ERR(EINVAL, "%s", "thread affinity not supported");
+    return -1;
+#endif
+}
+
+int aeron_thread_get_affinity(uint8_t *cpu_affinity)
+{
+#if defined(__linux__)
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    if (sched_getaffinity(0, sizeof(mask), &mask) < 0)
+    {
+        AERON_SET_ERR(errno, "%s", "failed to get thread affinity");
+        return -1;
+    }
+
+    for (uint8_t i = 0; i < UINT8_MAX; i++)
+    {
+        if (CPU_ISSET(i, &mask))
+        {
+            *cpu_affinity = i;
+            break;
+        }
     }
     return 0;
 #else

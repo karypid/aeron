@@ -84,6 +84,75 @@ TEST(AeronThreadTest, getNameShouldFailIfBufferIsTooSmall)
     EXPECT_EQ(-1, aeron_thread_get_name(buffer, AERON_THREAD_NAME_MAX_LENGTH));
 }
 
+TEST(AeronThreadTest, shouldRejectAffinityLargerThanNumberOfAvailableCpus)
+{
+    aeron_err_clear();
+#if defined(__linux__)
+    EXPECT_EQ(-1, aeron_thread_set_affinity("test", UINT8_MAX)); // assumes that machine has less than 256 CPUs
+    EXPECT_EQ(EINVAL, aeron_errcode());
+    EXPECT_NE(std::string::npos, std::string(aeron_errmsg()).find("failed to set thread affinity name=test, cpu_affinity_no=255"));
+#else
+    EXPECT_EQ(-1, aeron_thread_set_affinity("test", 0));
+    EXPECT_EQ(EINVAL, aeron_errcode());
+    EXPECT_NE(std::string::npos, std::string(aeron_errmsg()).find("thread affinity not supported"));
+#endif
+    aeron_err_clear();
+}
+
+TEST(AeronThreadTest, shouldReturnCurrentAffinityAsASingleCpu)
+{
+    aeron_err_clear();
+    uint8_t cpu_affinity_no = UINT8_MAX;
+#if defined(__linux__)
+    EXPECT_EQ(0, aeron_thread_get_affinity(&cpu_affinity_no));
+    EXPECT_NE(UINT8_MAX, cpu_affinity_no);
+#else
+    EXPECT_EQ(-1, aeron_thread_get_affinity(&cpu_affinity_no));
+    EXPECT_EQ(EINVAL, aeron_errcode());
+    EXPECT_NE(std::string::npos, std::string(aeron_errmsg()).find("thread affinity not supported"));
+#endif
+    aeron_err_clear();
+}
+
+TEST(AeronThreadTest, shouldChangeCpuAffinityOfARunningThread)
+{
+    aeron_err_clear();
+#if defined(__linux__)
+    std::atomic<bool> called(false);
+    auto setAffinity = [](void *arg) -> void*
+    {
+        cpu_set_t mask;
+        CPU_ZERO(&mask);
+        EXPECT_EQ(0, sched_getaffinity(0, sizeof(mask), &mask));
+
+        for (uint8_t i = 0; i < UINT8_MAX; i++)
+        {
+            if (CPU_ISSET(i, &mask))
+            {
+                EXPECT_EQ(0, aeron_thread_set_affinity("test", i)) << aeron_errmsg();
+                uint8_t cpu_affinity_no;
+                EXPECT_EQ(0, aeron_thread_get_affinity(&cpu_affinity_no));
+                EXPECT_EQ(i, cpu_affinity_no);
+            }
+        }
+
+        auto x = static_cast<std::atomic<bool>*>(arg);
+        x->store(true);
+        return nullptr;
+    };
+
+    aeron_thread_attr_t attr;
+    EXPECT_EQ(0, aeron_thread_attr_init(&attr));
+
+    aeron_thread_t thread;
+    EXPECT_EQ(0, aeron_thread_create(&thread, &attr, setAffinity, &called));
+
+    EXPECT_EQ(0, aeron_thread_join(thread, nullptr));
+    EXPECT_TRUE(called);
+#endif
+    aeron_err_clear();
+}
+
 class AeronThreadNameTest : public testing::TestWithParam<std::tuple<std::string, std::string>>
 {
 };
