@@ -998,34 +998,6 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
 
         case AERON_THREADING_MODE_SHARED_NETWORK:
             if (aeron_agent_init(
-                &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
-                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
-                &_driver->conductor,
-                _driver->context->agent_on_start_func,
-                _driver->context->agent_on_start_state,
-                aeron_driver_conductor_do_work,
-                aeron_driver_conductor_on_close,
-                _driver->context->conductor_idle_strategy_func,
-                _driver->context->conductor_idle_strategy_state) < 0)
-            {
-                goto error;
-            }
-
-            if (aeron_agent_init(
-                &_driver->runners[AERON_AGENT_RUNNER_NATIVE_RESOURCE_AGENT],
-                AERON_DRIVER_AGENT_ROLE_NAME_NATIVE_RESOURCE_AGENT,
-                &_driver->native_resource_agent,
-                aeron_driver_native_resource_agent_on_start,
-                &_driver->native_resource_agent,
-                aeron_driver_native_resource_agent_do_work,
-                aeron_driver_native_resource_agent_on_close,
-                _driver->context->native_resource_agent_idle_strategy_func,
-                _driver->context->native_resource_agent_idle_strategy_state) < 0)
-            {
-                goto error;
-            }
-
-            if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_SHARED_NETWORK],
                 AERON_DRIVER_AGENT_ROLE_NAME_SHARED_NETWORK,
                 _driver,
@@ -1038,23 +1010,6 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
             {
                 goto error;
             }
-            break;
-
-        case AERON_THREADING_MODE_DEDICATED:
-        default:
-            if (aeron_agent_init(
-                &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
-                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
-                &_driver->conductor,
-                _driver->context->agent_on_start_func,
-                _driver->context->agent_on_start_state,
-                aeron_driver_conductor_do_work,
-                aeron_driver_conductor_on_close,
-                _driver->context->conductor_idle_strategy_func,
-                _driver->context->conductor_idle_strategy_state) < 0)
-            {
-                goto error;
-            }
 
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_NATIVE_RESOURCE_AGENT],
@@ -1070,6 +1025,23 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
                 goto error;
             }
 
+            if (aeron_agent_init(
+                &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
+                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
+                &_driver->conductor,
+                _driver->context->agent_on_start_func,
+                _driver->context->agent_on_start_state,
+                aeron_driver_conductor_do_work,
+                aeron_driver_conductor_on_close,
+                _driver->context->conductor_idle_strategy_func,
+                _driver->context->conductor_idle_strategy_state) < 0)
+            {
+                goto error;
+            }
+            break;
+
+        case AERON_THREADING_MODE_DEDICATED:
+        default:
             if (aeron_agent_init(
                 &_driver->runners[AERON_AGENT_RUNNER_SENDER],
                 AERON_DRIVER_AGENT_ROLE_NAME_SENDER,
@@ -1094,6 +1066,34 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
                 aeron_driver_receiver_on_close,
                 _driver->context->receiver_idle_strategy_func,
                 _driver->context->receiver_idle_strategy_state) < 0)
+            {
+                goto error;
+            }
+
+            if (aeron_agent_init(
+                &_driver->runners[AERON_AGENT_RUNNER_NATIVE_RESOURCE_AGENT],
+                AERON_DRIVER_AGENT_ROLE_NAME_NATIVE_RESOURCE_AGENT,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_on_start,
+                &_driver->native_resource_agent,
+                aeron_driver_native_resource_agent_do_work,
+                aeron_driver_native_resource_agent_on_close,
+                _driver->context->native_resource_agent_idle_strategy_func,
+                _driver->context->native_resource_agent_idle_strategy_state) < 0)
+            {
+                goto error;
+            }
+
+            if (aeron_agent_init(
+                &_driver->runners[AERON_AGENT_RUNNER_CONDUCTOR],
+                AERON_DRIVER_AGENT_ROLE_NAME_CONDUCTOR,
+                &_driver->conductor,
+                _driver->context->agent_on_start_func,
+                _driver->context->agent_on_start_state,
+                aeron_driver_conductor_do_work,
+                aeron_driver_conductor_on_close,
+                _driver->context->conductor_idle_strategy_func,
+                _driver->context->conductor_idle_strategy_state) < 0)
             {
                 goto error;
             }
