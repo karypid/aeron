@@ -94,7 +94,7 @@ applied correctly when set, i.e. it ends up sharing the same core as the `conduc
 +
 Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
 
-* **[Driver/Java]** Sender thread busy spins even when idle. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
+* **[Driver]** Sender thread busy spins even when idle. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 +
 Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
 
