@@ -14,7 +14,16 @@
 * **[Client/Java]** Remove `Image#controlledPeek` APIs.
 * **[Client/C/C{plus}{plus} Wrapper]** Remove `aeron_image_set_position` and `aeron_image_controlled_peek` APIs.
 * **[Archive]** Abort `ControlSession` on non-recoverable exception.
+* **[Driver/C]** Fix CPU affinity assignment for native resource agent.
+* **[Driver/C]** Start agents in reverse order, i.e. ensure that no threads share CPU affinity with the `conductor`
+thread.
 * **[Java]** Upgrade to `Shadow` 9.5.1.
+
+== 1.52.2 (unreleased)
+
+* **[Driver/C]** Fix CPU affinity assignment for native resource agent.
+* **[Driver/C]** Start agents in reverse order, i.e. ensure that no threads share CPU affinity with the `conductor`
+thread.
 
 == 1.52.1 (2026-07-08)
 
@@ -81,8 +90,11 @@ resolution.
 === Known issues
 
 * **[Driver/C]** CPU affinity for the background thread (`aeron.driver.native.resource.agent.cpu.affinity`) is not
-applied correctly when set. Furthermore, native resource agent thread ends sharing the same core as the `conductor`
-thread when that is configured.
+applied correctly when set, i.e. it ends up sharing the same core as the `conductor` thread.
++
+Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
+
+* **[Driver/Java]** Sender thread busy spins even when idle. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 +
 Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
 
