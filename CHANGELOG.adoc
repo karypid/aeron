@@ -23,7 +23,7 @@ executed. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 * **[Driver/C]** Receiver work count calculation aligned with Java side.
 * **[Java]** Upgrade to `Shadow` 9.5.1.
 
-== 1.52.2 (unreleased)
+== 1.52.2 (2026-07-10)
 
 * **[Driver/C]** Fix CPU affinity assignment for native resource agent.
 * **[Driver/C]** Start agents in reverse order, i.e. ensure that no threads share CPU affinity with the `conductor`
@@ -101,10 +101,14 @@ resolution.
 applied correctly when set, i.e. it ends up sharing the same core as the `conductor` thread.
 +
 Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
++
+Fixed in <<1.52.2 (2026-07-10)>>.
 
 * **[Driver]** Sender thread busy spins even when idle. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 +
 Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
++
+Fixed in <<1.52.2 (2026-07-10)>>.
 
 === Changelog
 
