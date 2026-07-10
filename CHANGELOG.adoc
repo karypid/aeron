@@ -17,6 +17,10 @@
 * **[Driver/C]** Fix CPU affinity assignment for native resource agent.
 * **[Driver/C]** Start agents in reverse order, i.e. ensure that no threads share CPU affinity with the `conductor`
 thread.
+* **[Driver]** Sender work count should be based on actual work done, i.e. bytes sent/received and driver tasks
+executed. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
+* **[Driver/Java]** Receiver triggering address re-resolution should not count towards work done.
+* **[Driver/C]** Receiver work count calculation aligned with Java side.
 * **[Java]** Upgrade to `Shadow` 9.5.1.
 
 == 1.52.2 (unreleased)
@@ -24,6 +28,10 @@ thread.
 * **[Driver/C]** Fix CPU affinity assignment for native resource agent.
 * **[Driver/C]** Start agents in reverse order, i.e. ensure that no threads share CPU affinity with the `conductor`
 thread.
+* **[Driver]** Sender work count should be based on actual work done, i.e. bytes sent/received and driver tasks
+executed. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
+* **[Driver/Java]** Receiver triggering address re-resolution should not count towards work done.
+* **[Driver/C]** Receiver work count calculation aligned with Java side.
 
 == 1.52.1 (2026-07-08)
 
