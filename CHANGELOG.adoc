@@ -1071,72 +1071,72 @@ There is a new option to control how long untethered subscriptions will linger b
 * **[Java]** Use `Publication#revoke` and `Image#reject` to close `ControlSession` resources.
 * **[Java]** Use `Publication#revoke` to abort replay session.
 * **[Java]** Don't through an exception when failing to copy a file within the data collector. This breaks other parts of the data collection on test failure (e.g. event log capture).
-* **[C]** Flow control retransmit receiver window multiple for C driver. (#https://github.com/aeron-io/aeron/pull/1807[1807])
-* **[C]** C version of untethered linger timeout. (#https://github.com/aeron-io/aeron/pull/1808[1808])
+* **[C]** Flow control retransmit receiver window multiple for C driver. (https://github.com/aeron-io/aeron/pull/1807[1807])
+* **[C]** C version of untethered linger timeout. (https://github.com/aeron-io/aeron/pull/1808[1808])
 * **[Java]** Require `ArchiveThreadingMode.INVOKER` if MediaDriver is running in the invoker mode.
-* **[Java/C]** Per stream NAKs. (#https://github.com/aeron-io/aeron/pull/1806[1806])
-* **[Java]** Add separate linger timeout for untethered subscriptions. (#https://github.com/aeron-io/aeron/pull/1801[1801])
-* **[Java/C]** `Publication#revoke`. (#https://github.com/aeron-io/aeron/pull/1781[1781])
-* **[Java]** Make cluster publish leader heartbeat timeout to clients. (#https://github.com/aeron-io/aeron/pull/1805[1805])
+* **[Java/C]** Per stream NAKs. (https://github.com/aeron-io/aeron/pull/1806[1806])
+* **[Java]** Add separate linger timeout for untethered subscriptions. (https://github.com/aeron-io/aeron/pull/1801[1801])
+* **[Java/C]** `Publication#revoke`. (https://github.com/aeron-io/aeron/pull/1781[1781])
+* **[Java]** Make cluster publish leader heartbeat timeout to clients. (https://github.com/aeron-io/aeron/pull/1805[1805])
 * **[Java]** Require Aeron client to run in the invoker mode if MediaDriver is running with `ThreadingMode.INVOKER`, i.e. `Aeron.Context.useConductorAgentInvoker(true)` must be set when `Aeron.Context.driverAgentInvoker()` is set.
 * **[Java]** Add event code type for sequencer.
-* **[Java/C]** `Image#reject`. (#https://github.com/aeron-io/aeron/pull/1785[1785])
+* **[Java/C]** `Image#reject`. (https://github.com/aeron-io/aeron/pull/1785[1785])
 * **[Java]** Fsync `archive.catalog` file to disc when shutting down Archive.
 * **[C]** Align flow control receiver timeout with Java, i.e. use `AERON_FLOW_CONTROL_RECEIVER_TIMEOUT` env variable instead of `AERON_MIN_MULTICAST_FLOW_CONTROL_RECEIVER_TIMEOUT`.
 * **[Java]** Remove legacy `aeron.MinMulticastFlowControl.receiverTimeout` config option, i.e. use `aeron.flow.control.receiver.timeout` directly.
 * **[C]** Remove experimental feature flag for response channels.
 * **[Java]** Remove experimental option for response channels for the response channels.
-* **[C]** MDC short send fix. (#https://github.com/aeron-io/aeron/pull/1770[1770])
-* **[Java]** Flow control retransmit receiver window multiple (#https://github.com/aeron-io/aeron/pull/1800[1800])
+* **[C]** MDC short send fix. (https://github.com/aeron-io/aeron/pull/1770[1770])
+* **[Java]** Flow control retransmit receiver window multiple (https://github.com/aeron-io/aeron/pull/1800[1800])
 * **[Java]** Prevent potential silent message loss on cluster ingress/egress.
 * **[Java]** Make AeronCluster track connection status.
-* **[Java]** Create new Ping message for archive client keepalive. (#https://github.com/aeron-io/aeron/pull/1799[1799])
-* **[Java]** File page aligned mark files. (#https://github.com/aeron-io/aeron/pull/1789[1789])
+* **[Java]** Create new Ping message for archive client keepalive. (https://github.com/aeron-io/aeron/pull/1799[1799])
+* **[Java]** File page aligned mark files. (https://github.com/aeron-io/aeron/pull/1789[1789])
 * **[Java]** Increment snapshot counter after standby snapshots were successfully replicated.
 * **[Config]** Update code style to reduce use of '.*' imports.
 * **[Java]** Improve storage space exception detection.
-* **[Java]** Properly check for EOS flag. (#https://github.com/aeron-io/aeron/pull/1795[1795])
-* **[C]** Fix issue for untethered slow consumers impacting whole server. (#https://github.com/aeron-io/aeron/pull/1792[1792])
-* **[C{plus}{plus} Wrapper]** Remove 'experimental' indicator for C/C{plus}{plus} wrapper archive APIs. (#https://github.com/aeron-io/aeron/pull/1793[1793])
+* **[Java]** Properly check for EOS flag. (https://github.com/aeron-io/aeron/pull/1795[1795])
+* **[C]** Fix issue for untethered slow consumers impacting whole server. (https://github.com/aeron-io/aeron/pull/1792[1792])
+* **[C{plus}{plus} Wrapper]** Remove 'experimental' indicator for C/C{plus}{plus} wrapper archive APIs. (https://github.com/aeron-io/aeron/pull/1793[1793])
 * **[Java]** Refactor session liveness check.
 * **[C]** Use `async-executor` name for the async thread, i.e. align with the Java impl.
 * **[Java]** Use `async-executor` prefix for async threads.
 * **[Bash]** Simplify thread affinity listing.
 * **[Java]** Surface method to describe extension snapshot content in ClusterTool. Support printing snapshot entries as hex dumps.
 * **[C{plus}{plus}]** Add `#include <cstdint>`.
-* **[C{plus}{plus} Wrapper]** Add missing <cstdint> header. (#https://github.com/aeron-io/aeron/pull/1786[1786])
+* **[C{plus}{plus} Wrapper]** Add missing <cstdint> header. (https://github.com/aeron-io/aeron/pull/1786[1786])
 * **[C]** Remove affinity settings for the async thread (`aeron_executor`).
 * **[Java]** Add TestIdleStrategy.
-* **[Java]** Synchronize session ids across cluster nodes. (#https://github.com/aeron-io/aeron/pull/1774[1774])
+* **[Java]** Synchronize session ids across cluster nodes. (https://github.com/aeron-io/aeron/pull/1774[1774])
 * **[CI]** Add Clang 20 to the build matrix.
-* **[C]** Call close_session in `archive_close()`. (#https://github.com/aeron-io/aeron/pull/1778[1778])
+* **[C]** Call close_session in `archive_close()`. (https://github.com/aeron-io/aeron/pull/1778[1778])
 * **[Java]** Added close reason to consensus module extension call back on session close.
 * **[C]** Create log buffers sparse by default.
 * **[Java]** Create log buffers sparse by default.
 * **[Java]** Add context to the disconnected control session warning message, i.e. show the response streamId/channel pair to help identify client that was disconnected.
 * **[Java]** Use separate fragment assemblers for IPC and UDP inputs.
-* **[C{plus}{plus} Wrapper]** Sync `addAliasIfAbsent` method to ChannelUri. (#https://github.com/aeron-io/aeron/pull/1755[1755])
-* **[C{plus}{plus} Wrapper]** Allow setting the recording events channel. (#https://github.com/aeron-io/aeron/pull/1768[1768])
+* **[C{plus}{plus} Wrapper]** Sync `addAliasIfAbsent` method to ChannelUri. (https://github.com/aeron-io/aeron/pull/1755[1755])
+* **[C{plus}{plus} Wrapper]** Allow setting the recording events channel. (https://github.com/aeron-io/aeron/pull/1768[1768])
 * **[Java]** Use `MarkFile#timestampRelease`.
-* **[C{plus}{plus} Wrapper]** fix uri_buffer length in `Subscription.tryResolveChannelEndpointPort()`. (#https://github.com/aeron-io/aeron/pull/1767[1767])
+* **[C{plus}{plus} Wrapper]** fix uri_buffer length in `Subscription.tryResolveChannelEndpointPort()`. (https://github.com/aeron-io/aeron/pull/1767[1767])
 * **[Java]** Don't report error if the publication is closed or not connected during replay.
-* **[Doc]** Document the reserved range for Aeron counter typeIds. (#https://github.com/aeron-io/aeron/pull/1771[1771])
+* **[Doc]** Document the reserved range for Aeron counter typeIds. (https://github.com/aeron-io/aeron/pull/1771[1771])
 * **[Java]** Update `sub-pos` iff the image was not closed. Otherwise, the JVM might crash with `SIGSEGV` while accessing closed `Position`.
 * **[CMake]** Only link to client for signal test.
 * **[C]** Add TERM signal handling to C media driver and supporting test.
-* **[C]** Add missing <mutex> header. (#https://github.com/aeron-io/aeron/pull/1765[1765])
+* **[C]** Add missing <mutex> header. (https://github.com/aeron-io/aeron/pull/1765[1765])
 * **[CI]** Enable JDK 24 GA.
 * **[Java]** Do not send termination position to services if there aren't any.
 * **[Java]** Assert that a rejected image will reconnect after a liveness timeout.
 * **[C{plus}{plus}]** Use method references instead of capturing lambda to avoid warnings on Windows.
 * **[C]** Align counter API with the Java implementation: - Rename `*volatile` methods to `*release`. - Rename all `*_ordered` methods to `*_release`. - Add missing `_plain` methods.
 * **[Client]** Append block without modifying the underlying buffer, i.e. copy the entire block without the first header and the copy the header to complete write similar to `io.aeron.logbuffer.TermRebuilder.insert`.
-* **[Java]** Simple test fixes. (#https://github.com/aeron-io/aeron/pull/1760[1760])
+* **[Java]** Simple test fixes. (https://github.com/aeron-io/aeron/pull/1760[1760])
 * **[Java]** Fix mock usage on JDK 21+.
 * **[C{plus}{plus}]** More `#include <chrono>` fixes for Windows.
 * **[C{plus}{plus} Wrapper]** Include `<chrono>` to fix compilation error on Windows.
 * **[C]** Return an actual ref count value after increment/decrement operation completes + rename `aeron_image_refcnt_volatile` to `aeron_image_refcnt_acquire`.
-* **[Java]** Switched to the new Agrona release functions. (#https://github.com/aeron-io/aeron/pull/1748[1748])
+* **[Java]** Switched to the new Agrona release functions. (https://github.com/aeron-io/aeron/pull/1748[1748])
 * **[C]** Tidy up image list handling in subscription.
 * **[C]** Close an image when it is being removed from a subscription.
 * **[C]** Call `aeron_subscription_is_connected` to force an image list change number update so that image/log buffers can be freed by the conductor thread.
@@ -1160,8 +1160,8 @@ There is a new option to control how long untethered subscriptions will linger b
 * **[Java]** Use null values when resetting descriptor.
 * **[Java]** Use correlationId as sessionId.
 * **[Java]** Remove Mockito MockMaker setting from aeron-cluster.
-* **[Java]** Await recently added subscription in StreamStatTest. (#https://github.com/aeron-io/aeron/pull/1733[1733])
-* **[C]** Make sure aeron_array_fast_unordered_remove is used correctly (fixes #https://github.com/aeron-io/aeron/issues/1728[1728]).
+* **[Java]** Await recently added subscription in StreamStatTest. (https://github.com/aeron-io/aeron/pull/1733[1733])
+* **[C]** Make sure aeron_array_fast_unordered_remove is used correctly (fixes https://github.com/aeron-io/aeron/issues/1728[1728]).
 * **[Java]** Change log event for NAK received to use NAK length rather than packet length.
 * **[C]** Fix var-args bug in error reporting.
 * **[Java]** Bump `Agrona` to 2.2.1.
