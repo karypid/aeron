@@ -101,13 +101,13 @@ resolution.
 * **[Driver/C]** CPU affinity for the background thread (`aeron.driver.native.resource.agent.cpu.affinity`) is not
 applied correctly when set, i.e. it ends up sharing the same core as the `conductor` thread.
 +
-Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
+Affects <<1.52.0 (2026-07-03)>> and <<1.52.1 (2026-07-08)>>.
 +
 Fixed in <<1.52.2 (2026-07-10)>>.
 
 * **[Driver]** Sender thread busy spins even when idle. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 +
-Affects <<1.52.0 (2026-07-03)>> and <<1.51.1 (2026-06-30)>>.
+Affects <<1.52.0 (2026-07-03)>> and <<1.52.1 (2026-07-08)>>.
 +
 Fixed in <<1.52.2 (2026-07-10)>>.
 
