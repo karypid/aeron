@@ -3034,7 +3034,19 @@ final class ConsensusModuleAgent
     {
         if (isSnapshotSetComplete(serviceAcks))
         {
-            takeSnapshot(timestamp, logPosition, serviceAcks);
+            try
+            {
+                takeSnapshot(timestamp, logPosition, serviceAcks);
+            }
+            catch (final RuntimeException ex)
+            {
+                ctx.countedErrorHandler().onError(new ClusterException("failed to take snapshot", ex));
+                if (ex instanceof AgentTerminationException ||
+                    ex instanceof ArchiveException ae && ArchiveException.STORAGE_SPACE == ae.errorCode())
+                {
+                    unexpectedTermination(ex.getMessage());
+                }
+            }
         }
 
         sessionManager.updateTimeOfLastActivity();
