@@ -2075,7 +2075,7 @@ public final class ConsensusModule implements AutoCloseable
 
             archiveContext
                 .aeron(aeron)
-                .errorHandler(countedErrorHandler)
+                .errorHandler(null) // ensure that exceptions are re-thrown
                 .ownsAeronClient(false)
                 .lock(NoOpLock.INSTANCE)
                 .controlRequestChannel(addAliasIfAbsent(

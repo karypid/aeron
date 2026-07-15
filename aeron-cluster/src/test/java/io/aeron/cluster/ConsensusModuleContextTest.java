@@ -43,6 +43,7 @@ import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.BitUtil;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
+import org.agrona.ErrorHandler;
 import org.agrona.SystemUtil;
 import org.agrona.concurrent.AgentInvoker;
 import org.agrona.concurrent.NoOpLock;
@@ -79,7 +80,6 @@ import static io.aeron.cluster.ConsensusModule.Configuration.CONSENSUS_MODULE_ST
 import static io.aeron.cluster.ConsensusModule.Configuration.CONTROL_TOGGLE_TYPE_ID;
 import static io.aeron.cluster.ConsensusModule.Configuration.DEFAULT_AUTHORISATION_SERVICE_SUPPLIER;
 import static io.aeron.cluster.ConsensusModule.Configuration.ELECTION_STATE_TYPE_ID;
-import static io.aeron.cluster.service.ClusteredServiceContainer.Configuration.MAX_SERVICE_COUNT;
 import static io.aeron.cluster.ConsensusModule.Configuration.SERVICE_ID;
 import static io.aeron.cluster.ConsensusModule.Configuration.SNAPSHOT_COUNTER_TYPE_ID;
 import static io.aeron.cluster.ConsensusModule.Configuration.TIMER_SERVICE_SUPPLIER_PRIORITY_HEAP;
@@ -89,6 +89,7 @@ import static io.aeron.cluster.codecs.mark.ClusterComponentType.CONSENSUS_MODULE
 import static io.aeron.cluster.service.ClusterMarkFile.ERROR_BUFFER_MIN_LENGTH;
 import static io.aeron.cluster.service.ClusterMarkFile.HEADER_LENGTH;
 import static io.aeron.cluster.service.ClusteredServiceContainer.Configuration.MARK_FILE_DIR_PROP_NAME;
+import static io.aeron.cluster.service.ClusteredServiceContainer.Configuration.MAX_SERVICE_COUNT;
 import static io.aeron.logbuffer.LogBufferDescriptor.PAGE_MIN_SIZE;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -820,10 +821,17 @@ class ConsensusModuleContextTest
     @Test
     void shouldUseExplicitlyAssignArchiveContext()
     {
+        final String requestChannel = "aeron:ipc?mtu=2048";
+        final String responseChannel = "aeron:ipc?mtu=2048";
         final AeronArchive.Context archiveContext = new AeronArchive.Context()
-            .controlRequestChannel("aeron:ipc")
-            .controlResponseChannel("aeron:ipc");
-        context.archiveContext(archiveContext);
+            .controlRequestChannel(requestChannel)
+            .controlResponseChannel(responseChannel)
+            .errorHandler(mock(ErrorHandler.class))
+            .aeron(mock(Aeron.class))
+            .ownsAeronClient(true);
+        final int clusterId = 8;
+        final int clusterMemberId = 3;
+        context.archiveContext(archiveContext).clusterId(clusterId).clusterMemberId(clusterMemberId);
         assertSame(archiveContext, context.archiveContext());
 
         try
@@ -833,8 +841,16 @@ class ConsensusModuleContextTest
             assertSame(archiveContext, context.archiveContext());
             assertSame(context.aeron(), archiveContext.aeron());
             assertFalse(archiveContext.ownsAeronClient());
-            assertSame(context.countedErrorHandler(), archiveContext.errorHandler());
+            assertNull(archiveContext.errorHandler());
             assertSame(NoOpLock.INSTANCE, archiveContext.lock());
+            assertEquals(
+                ChannelUri.parse(ChannelUri.addAliasIfAbsent(requestChannel, "cm-archive-ctrl-req-cluster-" +
+                    clusterId + "-member-" + clusterMemberId)),
+                ChannelUri.parse(archiveContext.controlRequestChannel()));
+            assertEquals(
+                ChannelUri.parse(ChannelUri.addAliasIfAbsent(responseChannel, "cm-archive-ctrl-resp-cluster-" +
+                    clusterId + "-member-" + clusterMemberId)),
+                ChannelUri.parse(archiveContext.controlResponseChannel()));
         }
         finally
         {
@@ -861,7 +877,7 @@ class ConsensusModuleContextTest
             assertNotNull(archiveContext);
             assertSame(context.aeron(), archiveContext.aeron());
             assertFalse(archiveContext.ownsAeronClient());
-            assertSame(context.countedErrorHandler(), archiveContext.errorHandler());
+            assertNull(archiveContext.errorHandler());
             assertSame(NoOpLock.INSTANCE, archiveContext.lock());
             assertEquals(controlChannel, archiveContext.controlRequestChannel());
             assertEquals(controlChannel, archiveContext.controlResponseChannel());
@@ -1012,7 +1028,7 @@ class ConsensusModuleContextTest
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {Integer.MIN_VALUE, -1, Integer.MAX_VALUE, MAX_SERVICE_COUNT + 1})
+    @ValueSource(ints = { Integer.MIN_VALUE, -1, Integer.MAX_VALUE, MAX_SERVICE_COUNT + 1 })
     void shouldValidateServiceCount(final int serviceCount)
     {
         context.serviceCount(serviceCount);
