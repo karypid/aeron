@@ -28,9 +28,7 @@ import io.aeron.exceptions.AeronException;
 import io.aeron.exceptions.TimeoutException;
 import io.aeron.status.ChannelEndpointStatus;
 import org.agrona.CloseHelper;
-import org.agrona.LangUtil;
 import org.agrona.collections.Int2ObjectHashMap;
-import org.agrona.concurrent.AgentTerminationException;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -265,11 +263,6 @@ class Election
         ctx.countedErrorHandler().onError(ex);
         logPosition = ctx.commitPositionCounter().getPlain();
         state(INIT, nowNs, ex.getMessage());
-
-        if (ex instanceof AgentTerminationException || ex instanceof InterruptedException)
-        {
-            LangUtil.rethrowUnchecked(ex);
-        }
     }
 
     void onRecordingSignal(

@@ -24,6 +24,7 @@ import io.aeron.Image;
 import io.aeron.Subscription;
 import io.aeron.UnavailableImageHandler;
 import io.aeron.archive.client.AeronArchive;
+import io.aeron.archive.client.ArchiveException;
 import io.aeron.cluster.client.ClusterEvent;
 import io.aeron.cluster.codecs.CloseReason;
 import io.aeron.cluster.codecs.ClusterAction;
@@ -41,6 +42,7 @@ import io.aeron.test.Tests;
 import io.aeron.test.cluster.TestClusterClock;
 import org.agrona.collections.MutableLong;
 import org.agrona.concurrent.AgentInvoker;
+import org.agrona.concurrent.AgentTerminationException;
 import org.agrona.concurrent.CountedErrorHandler;
 import org.agrona.concurrent.NoOpIdleStrategy;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -70,8 +72,10 @@ import static io.aeron.cluster.client.AeronCluster.Configuration.PROTOCOL_SEMANT
 import static java.lang.Boolean.TRUE;
 import static org.agrona.concurrent.status.CountersReader.COUNTER_LENGTH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -79,6 +83,7 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -833,5 +838,109 @@ class ConsensusModuleAgentTest
                 assertEquals(timeOfLastUpdateNs, agent.timeOfLastLogUpdateNs());
             }
         }
+    }
+
+    @Test
+    void shouldTerminateOnArchiveStorageError()
+    {
+        final Subscription subscription = mock(Subscription.class);
+        final ArchiveException sourceException =
+            new ArchiveException("out of disc", ArchiveException.STORAGE_SPACE);
+        when(subscription.poll(any(), anyInt())).thenThrow(
+            sourceException);
+        when(mockAeron.addSubscription(anyString(), anyInt())).thenReturn(subscription);
+        final Runnable terminationHook = mock(Runnable.class);
+        ctx.terminationHook(terminationHook).clusterClock(new TestClusterClock());
+
+        final ConsensusModuleAgent agent = new ConsensusModuleAgent(ctx);
+
+        final ClusterTerminationException exception =
+            assertThrowsExactly(ClusterTerminationException.class, agent::doWork);
+        assertFalse(exception.isExpected());
+        assertEquals("unexpected termination", exception.getMessage());
+
+        final InOrder inOrder = inOrder(ctx.countedErrorHandler(), subscription, terminationHook);
+        inOrder.verify(subscription).poll(any(), anyInt());
+        inOrder.verify(ctx.countedErrorHandler()).onError(sourceException);
+        inOrder.verify(terminationHook).run();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldTerminateIfLocalArchiveConnectionIsLost()
+    {
+        final Subscription subscription = mock(Subscription.class);
+        final NumberFormatException sourceException = new NumberFormatException("xyz");
+        when(subscription.poll(any(), anyInt())).thenThrow(
+            sourceException);
+        when(mockAeron.addSubscription(anyString(), anyInt())).thenReturn(subscription);
+        final Runnable terminationHook = mock(Runnable.class);
+        ctx.terminationHook(terminationHook).clusterClock(new TestClusterClock());
+
+        final AeronArchive aeronArchive = mock(AeronArchive.class);
+        when(aeronArchive.state()).thenReturn(AeronArchive.State.CLOSED);
+        final Election election = mock(Election.class);
+
+        final ConsensusModuleAgent agent = new ConsensusModuleAgent(ctx);
+        Tests.setField(agent, "archive", aeronArchive);
+        Tests.setField(agent, "slowTickDeadlineNs", Long.MAX_VALUE);
+        Tests.setField(agent, "election", election);
+
+        final ClusterTerminationException exception =
+            assertThrowsExactly(ClusterTerminationException.class, agent::doWork);
+        assertFalse(exception.isExpected());
+        assertEquals("unexpected termination", exception.getMessage());
+
+        final InOrder inOrder = inOrder(ctx.countedErrorHandler(), subscription, terminationHook, election);
+        inOrder.verify(subscription).poll(any(), anyInt());
+        inOrder.verify(ctx.countedErrorHandler()).onError(sourceException);
+        inOrder.verify(terminationHook).run();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldPropagateAgentTerminationExceptionAndRunTerminationHook()
+    {
+        final Subscription subscription = mock(Subscription.class);
+        final AgentTerminationException sourceException = new AgentTerminationException("test");
+        when(subscription.poll(any(), anyInt())).thenThrow(
+            sourceException);
+        when(mockAeron.addSubscription(anyString(), anyInt())).thenReturn(subscription);
+        final Runnable terminationHook = mock(Runnable.class);
+        ctx.terminationHook(terminationHook).clusterClock(new TestClusterClock());
+
+        final ConsensusModuleAgent agent = new ConsensusModuleAgent(ctx);
+
+        final AgentTerminationException exception =
+            assertThrowsExactly(AgentTerminationException.class, agent::doWork);
+        assertSame(sourceException, exception);
+
+        final InOrder inOrder = inOrder(ctx.countedErrorHandler(), subscription, terminationHook);
+        inOrder.verify(subscription).poll(any(), anyInt());
+        inOrder.verify(terminationHook).run();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldDelegateNonTerminalErrorHandlingToElectionIfSet()
+    {
+        final Subscription subscription = mock(Subscription.class);
+        final NumberFormatException sourceException = new NumberFormatException("xyz");
+        when(subscription.poll(any(), anyInt())).thenThrow(sourceException);
+        when(mockAeron.addSubscription(anyString(), anyInt())).thenReturn(subscription);
+        ctx.clusterClock(new TestClusterClock());
+
+        final Election election = mock(Election.class);
+
+        final ConsensusModuleAgent agent = new ConsensusModuleAgent(ctx);
+        Tests.setField(agent, "election", election);
+        Tests.setField(agent, "slowTickDeadlineNs", Long.MAX_VALUE);
+
+        agent.doWork();
+
+        final InOrder inOrder = inOrder(ctx.countedErrorHandler(), subscription, election);
+        inOrder.verify(subscription).poll(any(), anyInt());
+        inOrder.verify(election).handleError(anyLong(), eq(sourceException));
+        inOrder.verifyNoMoreInteractions();
     }
 }

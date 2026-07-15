@@ -397,45 +397,65 @@ final class ConsensusModuleAgent
 
         try
         {
-            if (nowNs >= slowTickDeadlineNs)
+            try
             {
-                final int slowTickWorkCount = slowTickWork(nowNs);
+                if (nowNs >= slowTickDeadlineNs)
+                {
+                    final int slowTickWorkCount = slowTickWork(nowNs);
 
-                workCount += slowTickWorkCount;
-                slowTickDeadlineNs = slowTickWorkCount > 0 ? nowNs + 1 : nowNs + SLOW_TICK_INTERVAL_NS;
+                    workCount += slowTickWorkCount;
+                    slowTickDeadlineNs = slowTickWorkCount > 0 ? nowNs + 1 : nowNs + SLOW_TICK_INTERVAL_NS;
+                }
+
+                workCount += consensusAdapter.poll();
+
+                if (null != election)
+                {
+                    workCount += election.doWork(nowNs);
+                }
+                else
+                {
+                    workCount += consensusWork(timestamp, nowNs);
+                }
+
+                if (null != consensusModuleExtension)
+                {
+                    workCount += consensusModuleExtension.doWork(nowNs);
+                }
             }
-
-            workCount += consensusAdapter.poll();
-
-            if (null != election)
+            catch (final Exception ex)
             {
-                workCount += election.doWork(nowNs);
-            }
-            else
-            {
-                workCount += consensusWork(timestamp, nowNs);
-            }
+                if (ex instanceof AgentTerminationException)
+                {
+                    throw ex;
+                }
 
-            if (null != consensusModuleExtension)
-            {
-                workCount += consensusModuleExtension.doWork(nowNs);
+                if (ex instanceof ArchiveException ae && ArchiveException.STORAGE_SPACE == ae.errorCode())
+                {
+                    ctx.countedErrorHandler().onError(ex);
+                    unexpectedTermination(ex.getMessage());
+                }
+
+                if (null != archive && AeronArchive.State.CONNECTED != archive.state())
+                {
+                    ctx.countedErrorHandler().onError(ex);
+                    unexpectedTermination("local archive is not connected");
+                }
+
+                if (null != election)
+                {
+                    election.handleError(nowNs, ex);
+                }
+                else
+                {
+                    throw ex;
+                }
             }
         }
         catch (final AgentTerminationException ex)
         {
             runTerminationHook();
             throw ex;
-        }
-        catch (final Exception ex)
-        {
-            if (null != election)
-            {
-                election.handleError(nowNs, ex);
-            }
-            else
-            {
-                throw ex;
-            }
         }
 
         clusterTimeConsumer.accept(timestamp);
@@ -2049,19 +2069,8 @@ final class ConsensusModuleAgent
                         return workCount;
                     }
 
-                    final ArchiveException ex = new ArchiveException(
+                    throw new ArchiveException(
                         poller.errorMessage(), (int)poller.relevantId(), poller.correlationId());
-
-                    if (ex.errorCode() == ArchiveException.STORAGE_SPACE)
-                    {
-                        ctx.countedErrorHandler().onError(ex);
-                        unexpectedTermination(poller.errorMessage());
-                    }
-
-                    if (null != election)
-                    {
-                        election.handleError(clusterClock.timeNanos(), ex);
-                    }
                 }
                 else if (RecordingSignalEventDecoder.TEMPLATE_ID == templateId)
                 {
@@ -2281,24 +2290,11 @@ final class ConsensusModuleAgent
 
     private void startLogRecording(final String channel, final int streamId, final SourceLocation sourceLocation)
     {
-        try
-        {
-            final long logRecordingId = recordingLog.findLastTermRecordingId();
+        final long logRecordingId = recordingLog.findLastTermRecordingId();
 
-            logSubscriptionId = RecordingPos.NULL_RECORDING_ID == logRecordingId ?
-                archive.startRecording(channel, streamId, sourceLocation, true) :
-                archive.extendRecording(logRecordingId, channel, streamId, sourceLocation, true);
-        }
-        catch (final ArchiveException ex)
-        {
-            if (ex.errorCode() == ArchiveException.STORAGE_SPACE)
-            {
-                ctx.countedErrorHandler().onError(ex);
-                unexpectedTermination(ex.getMessage());
-            }
-
-            throw ex;
-        }
+        logSubscriptionId = RecordingPos.NULL_RECORDING_ID == logRecordingId ?
+            archive.startRecording(channel, streamId, sourceLocation, true) :
+            archive.extendRecording(logRecordingId, channel, streamId, sourceLocation, true);
     }
 
     private void updateMemberDetails(final ClusterMember newLeader)
@@ -3038,18 +3034,7 @@ final class ConsensusModuleAgent
     {
         if (isSnapshotSetComplete(serviceAcks))
         {
-            try
-            {
-                takeSnapshot(timestamp, logPosition, serviceAcks);
-            }
-            catch (final RuntimeException ex)
-            {
-                ctx.countedErrorHandler().onError(new ClusterException("failed to take snapshot", ex));
-                if (isTerminalError(ex))
-                {
-                    unexpectedTermination(ex.getMessage());
-                }
-            }
+            takeSnapshot(timestamp, logPosition, serviceAcks);
         }
 
         sessionManager.updateTimeOfLastActivity();
@@ -3075,12 +3060,6 @@ final class ConsensusModuleAgent
                 ClusterControl.ToggleState.reset(controlToggle);
             }
         }
-    }
-
-    private static boolean isTerminalError(final RuntimeException ex)
-    {
-        return ex instanceof AgentTerminationException ||
-            (ex instanceof ArchiveException archiveError && archiveError.errorCode() == ArchiveException.STORAGE_SPACE);
     }
 
     private boolean isSnapshotSetComplete(final ServiceAck[] serviceAcks)
@@ -3285,28 +3264,24 @@ final class ConsensusModuleAgent
     {
         appendPosition = null;
 
-        if (NULL_VALUE != logSubscriptionId && archive.archiveProxy().publication().isConnected())
+        if (null != archive && AeronArchive.State.CONNECTED == archive.state())
         {
             try
             {
-                archive.tryStopRecording(logSubscriptionId);
+                if (NULL_VALUE != logSubscriptionId)
+                {
+                    final long subId = logSubscriptionId;
+                    logSubscriptionId = NULL_VALUE;
+                    archive.tryStopRecording(subId);
+                }
+                else if (NULL_VALUE != logRecordingId)
+                {
+                    archive.tryStopRecordingByIdentity(logRecordingId);
+                }
             }
             catch (final Exception ex)
             {
-                ctx.countedErrorHandler().onError(new ClusterException(ex, WARN));
-            }
-
-            logSubscriptionId = NULL_VALUE;
-        }
-        else if (NULL_VALUE != logRecordingId && archive.archiveProxy().publication().isConnected())
-        {
-            try
-            {
-                archive.tryStopRecordingByIdentity(logRecordingId);
-            }
-            catch (final Exception ex)
-            {
-                ctx.countedErrorHandler().onError(new ClusterException(ex, WARN));
+                ctx.countedErrorHandler().onError(new ClusterEvent(ex.getMessage(), WARN));
             }
         }
     }
