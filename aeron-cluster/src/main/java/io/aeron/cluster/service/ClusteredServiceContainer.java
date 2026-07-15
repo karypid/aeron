@@ -1024,7 +1024,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
                 .aeron(aeron)
                 .ownsAeronClient(false)
                 .lock(NoOpLock.INSTANCE)
-                .errorHandler(countedErrorHandler)
+                .errorHandler(null) // propagate errors directly
                 .controlRequestChannel(addAliasIfAbsent(
                 archiveContext.controlRequestChannel(),
                 "sc-" + serviceId + "-archive-ctrl-req-cluster-" + clusterId))

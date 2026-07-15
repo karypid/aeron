@@ -28,6 +28,7 @@ import io.aeron.test.SystemTestWatcher;
 import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
+import org.agrona.ErrorHandler;
 import org.agrona.concurrent.NoOpLock;
 import org.agrona.concurrent.SystemEpochClock;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -271,7 +272,10 @@ class ClusteredServiceContainerContextTest
     {
         final AeronArchive.Context archiveContext = new AeronArchive.Context()
             .controlRequestChannel("aeron:ipc")
-            .controlResponseChannel("aeron:ipc");
+            .controlResponseChannel("aeron:ipc")
+            .ownsAeronClient(true)
+            .aeron(mock(Aeron.class))
+            .errorHandler(mock(ErrorHandler.class));
         context.archiveContext(archiveContext);
         assertSame(archiveContext, context.archiveContext());
 
@@ -280,7 +284,7 @@ class ClusteredServiceContainerContextTest
         assertSame(archiveContext, context.archiveContext());
         assertSame(context.aeron(), archiveContext.aeron());
         assertFalse(archiveContext.ownsAeronClient());
-        assertSame(context.countedErrorHandler(), archiveContext.errorHandler());
+        assertNull(archiveContext.errorHandler());
         assertSame(NoOpLock.INSTANCE, archiveContext.lock());
     }
 
@@ -303,7 +307,7 @@ class ClusteredServiceContainerContextTest
             assertNotNull(archiveContext);
             assertSame(context.aeron(), archiveContext.aeron());
             assertFalse(archiveContext.ownsAeronClient());
-            assertSame(context.countedErrorHandler(), archiveContext.errorHandler());
+            assertNull(archiveContext.errorHandler());
             assertSame(NoOpLock.INSTANCE, archiveContext.lock());
             assertEquals(controlChannel, archiveContext.controlRequestChannel());
             assertEquals(controlChannel, archiveContext.controlResponseChannel());
