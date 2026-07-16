@@ -1238,6 +1238,13 @@ project(':aeron-system-tests') {
         archiveClassifier.set('tests')
         from sourceSets.test.output
         configurations = [project.configurations.testRuntimeClasspath]
+
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE // exclude duplicate files by default
+
+        mergeServiceFiles('META-INF/services') // merge service files into a single file
+        filesMatching('META-INF/services/**') {
+            duplicatesStrategy = DuplicatesStrategy.INCLUDE // copy all services across
+        }
     }
 
     javadoc.enabled = false
