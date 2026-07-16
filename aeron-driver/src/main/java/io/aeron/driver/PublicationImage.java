@@ -503,7 +503,7 @@ public final class PublicationImage
 
             if (!isSendingEosSm)
             {
-                isSendingEosSm = !isEndOfStream || rebuildPosition.getVolatile() == hwmPosition.get();
+                isSendingEosSm = !isEndOfStream || rebuildPosition.get() == hwmPosition.getAcquire();
             }
 
             if (isSendingEosSm)
@@ -553,13 +553,13 @@ public final class PublicationImage
 
         if (isRebuilding)
         {
-            final long hwmPosition = this.hwmPosition.getVolatile();
+            final long hwmPosition = this.hwmPosition.getAcquire();
             long minSubscriberPosition = Long.MAX_VALUE;
             long maxSubscriberPosition = 0;
 
             for (final ReadablePosition subscriberPosition : subscriberPositions)
             {
-                final long position = subscriberPosition.getVolatile();
+                final long position = subscriberPosition.getAcquire();
                 minSubscriberPosition = Math.min(minSubscriberPosition, position);
                 maxSubscriberPosition = Math.max(maxSubscriberPosition, position);
             }
@@ -727,7 +727,7 @@ public final class PublicationImage
     {
         if (!isSendingEosSm)
         {
-            if (isEndOfStream && rebuildPosition.getVolatile() == hwmPosition.get() && State.ACTIVE == state)
+            if (isEndOfStream && rebuildPosition.get() == hwmPosition.getAcquire() && State.ACTIVE == state)
             {
                 isRebuilding = false;
                 timeOfLastStateChangeNs = nowNs;
@@ -909,7 +909,7 @@ public final class PublicationImage
 
         for (final ReadablePosition subscriberPosition : subscriberPositions)
         {
-            position = Math.min(subscriberPosition.getVolatile(), position);
+            position = Math.min(subscriberPosition.getAcquire(), position);
         }
 
         return position;
@@ -1036,7 +1036,7 @@ public final class PublicationImage
 
         for (final ReadablePosition subscriberPosition : subscriberPositions)
         {
-            if (subscriberPosition.getVolatile() < rebuildPosition)
+            if (subscriberPosition.getAcquire() < rebuildPosition)
             {
                 return false;
             }
