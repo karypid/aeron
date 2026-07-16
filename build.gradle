@@ -1239,9 +1239,16 @@ project(':aeron-system-tests') {
         from sourceSets.test.output
         configurations = [project.configurations.testRuntimeClasspath]
 
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
-        mergeServiceFiles('META-INF/services/')
-        filesNotMatching("META-INF/services/**") {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE // exclude duplicate files by default
+
+        mergeServiceFiles('META-INF/services') // merge service files into a single file
+        filesMatching('META-INF/**') {
+            duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        }
+        filesMatching('META-INF/LICENSE*') {
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        }
+        filesMatching('META-INF/NOTICE') {
             duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         }
     }
