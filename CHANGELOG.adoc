@@ -22,7 +22,7 @@ executed. (https://github.com/aeron-io/aeron/issues/2092/[#2092])
 * **[Driver/Java]** Receiver triggering address re-resolution should not count towards work done.
 * **[Driver/C]** Receiver work count calculation aligned with Java side.
 * **[Java]** Upgrade to `JUnit` 6.1.2.
-* **[Java]** Upgrade to `Shadow` 9.5.1.
+* **[Java]** Upgrade to `Shadow` 9.6.0.
 
 == 1.52.2 (2026-07-10)
 
