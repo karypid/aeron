@@ -1615,7 +1615,7 @@ NOTE: *JDK 17 is required for compiling and running!*
 === Changelog
 
 * **[Java]** Use new Selector API and fix samples.
-* **[Java]** Fix config validation on JDK 17  by using an external Nashorn ScriptEngine.
+* **[Java]** Fix config validation on JDK 17 by using an external Nashorn ScriptEngine.
 * **[CI]** Execute tests using `ubuntu-24.04` and `macos-latest`.
 * **[Java]** Upgrade to Agrona 1.23.0.
 * **[Java]** Upgrade to SBE 1.33.0.
@@ -2134,7 +2134,7 @@ Fixed in https://github.com/aeron-io/aeron/releases/tag/1.44.1[1.44.1].
 * **[Java/C]** Name resolution execution time tracking
 * **[Java]** Simplify Client Close
 * **[Java]** Perform Runtime.exit(int) on another thread in default error handler to avoid deadlocks if Aeron instances are used on JVM shutdown hooks.
-* **[C]** Fix potential memory leak.  Use correct action with publication notification.
+* **[C]** Fix potential memory leak. Use correct action with publication notification.
 * **[Java]** Ensure segment file write of final byte for extension is successful
 
 == 1.41.2 (2023-04-20)
