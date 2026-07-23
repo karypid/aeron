@@ -17,12 +17,21 @@ package io.aeron.driver.media;
 
 import io.aeron.driver.DriverConductorProxy;
 import io.aeron.driver.MediaDriver;
+import io.aeron.driver.NetworkPublication;
+import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.driver.status.SystemCounters;
+import io.aeron.logbuffer.LogBufferDescriptor;
+import io.aeron.protocol.ErrorFlyweight;
+import io.aeron.protocol.NakFlyweight;
+import io.aeron.protocol.StatusMessageFlyweight;
 import org.agrona.CloseHelper;
 import org.agrona.concurrent.CachedNanoClock;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.net.InetSocketAddress;
 
@@ -30,19 +39,22 @@ import static io.aeron.driver.media.SendChannelEndpoint.DESTINATION_TIMEOUT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class SendChannelEndpointTest
 {
     private final SystemCounters mockSystemCounters = mock(SystemCounters.class);
-    private final AtomicCounter mockCounter = mock(AtomicCounter.class);
     private final AtomicCounter mockStatusIndicator = mock(AtomicCounter.class);
     private final DriverConductorProxy mockConductorProxy = mock(DriverConductorProxy.class);
     private final CachedNanoClock nanoClock = new CachedNanoClock();
+    private final AtomicCounter[] systemCounters = new AtomicCounter[SystemCounterDescriptor.values().length];
 
     private final MediaDriver.Context context = new MediaDriver.Context()
         .systemCounters(mockSystemCounters)
@@ -55,9 +67,19 @@ class SendChannelEndpointTest
 
     private SendChannelEndpoint endpoint;
 
-    SendChannelEndpointTest()
+    @BeforeEach
+    void setUp()
     {
-        when(mockSystemCounters.get(any())).thenReturn(mockCounter);
+        for (final SystemCounterDescriptor descriptor : SystemCounterDescriptor.values())
+        {
+            systemCounters[descriptor.id()] = mock(AtomicCounter.class);
+        }
+        when(mockSystemCounters.get(any()))
+            .thenAnswer(invocation ->
+            {
+                final SystemCounterDescriptor descriptor = invocation.getArgument(0);
+                return systemCounters[descriptor.id()];
+            });
     }
 
     @AfterEach
@@ -91,5 +113,98 @@ class SendChannelEndpointTest
 
         verify(mockConductorProxy, times(1)).reResolveEndpoint(
             anyString(), any(SendChannelEndpoint.class), nullable(InetSocketAddress.class));
+    }
+
+    @Test
+    void shouldRejectInvalidErrorFrame()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555"), mockStatusIndicator, context);
+
+        final ErrorFlyweight flyweight = new ErrorFlyweight(new UnsafeBuffer(new byte[ErrorFlyweight.HEADER_LENGTH]));
+
+        endpoint.onError(
+            flyweight, flyweight, ErrorFlyweight.HEADER_LENGTH, mock(InetSocketAddress.class), mockConductorProxy);
+
+        final AtomicCounter invalidPackets = mockSystemCounters.get(SystemCounterDescriptor.INVALID_PACKETS);
+        final AtomicCounter errorFramesReceived = mockSystemCounters.get(SystemCounterDescriptor.ERROR_FRAMES_RECEIVED);
+        verify(invalidPackets).increment();
+        verifyNoMoreInteractions(invalidPackets);
+        verifyNoInteractions(errorFramesReceived);
+    }
+
+    @Test
+    void shouldRejectInvalidNakFrame()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555"), mockStatusIndicator, context);
+        final NetworkPublication publication = mock(NetworkPublication.class);
+        endpoint.registerForSend(publication);
+
+        final NakFlyweight flyweight = new NakFlyweight(new UnsafeBuffer(new byte[NakFlyweight.HEADER_LENGTH]));
+        flyweight.termOffset(-1);
+
+        endpoint.onNakMessage(
+            flyweight, flyweight, NakFlyweight.HEADER_LENGTH, mock(InetSocketAddress.class));
+
+        final AtomicCounter invalidPackets = mockSystemCounters.get(SystemCounterDescriptor.INVALID_PACKETS);
+        final AtomicCounter nakFramesReceived = mockSystemCounters.get(SystemCounterDescriptor.NAK_MESSAGES_RECEIVED);
+        final InOrder inOrder = inOrder(invalidPackets, nakFramesReceived, publication);
+        inOrder.verify(publication).termBufferLength();
+        inOrder.verify(invalidPackets).increment();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldRejectInvalidStatusMessageFrame()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555"), mockStatusIndicator, context);
+        final NetworkPublication publication = mock(NetworkPublication.class);
+        final int termLength = 128 * 1024;
+        when(publication.termBufferLength()).thenReturn(termLength);
+        endpoint.registerForSend(publication);
+
+        final StatusMessageFlyweight flyweight =
+            new StatusMessageFlyweight(new UnsafeBuffer(new byte[StatusMessageFlyweight.HEADER_LENGTH]));
+        flyweight.consumptionTermOffset(termLength + 1).receiverWindowLength(1024);
+
+        endpoint.onStatusMessage(
+            flyweight,
+            flyweight,
+            StatusMessageFlyweight.HEADER_LENGTH,
+            mock(InetSocketAddress.class),
+            mockConductorProxy);
+
+        final AtomicCounter invalidPackets = mockSystemCounters.get(SystemCounterDescriptor.INVALID_PACKETS);
+        final AtomicCounter smReceived = mockSystemCounters.get(SystemCounterDescriptor.STATUS_MESSAGES_RECEIVED);
+        final InOrder inOrder = inOrder(invalidPackets, smReceived, publication);
+        inOrder.verify(publication).termBufferLength();
+        inOrder.verify(invalidPackets).increment();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void shouldRejectInvalidStatusMessageFrameEvenWhenThereIsNoPublication()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555"), mockStatusIndicator, context);
+
+        final StatusMessageFlyweight flyweight =
+            new StatusMessageFlyweight(new UnsafeBuffer(new byte[StatusMessageFlyweight.HEADER_LENGTH]));
+        flyweight.consumptionTermOffset(0).receiverWindowLength(LogBufferDescriptor.TERM_MAX_LENGTH);
+
+        endpoint.onStatusMessage(
+            flyweight,
+            flyweight,
+            StatusMessageFlyweight.HEADER_LENGTH,
+            mock(InetSocketAddress.class),
+            mockConductorProxy);
+
+        final AtomicCounter invalidPackets = mockSystemCounters.get(SystemCounterDescriptor.INVALID_PACKETS);
+        final AtomicCounter smReceived = mockSystemCounters.get(SystemCounterDescriptor.STATUS_MESSAGES_RECEIVED);
+        final InOrder inOrder = inOrder(invalidPackets, smReceived);
+        inOrder.verify(invalidPackets).increment();
+        inOrder.verifyNoMoreInteractions();
     }
 }

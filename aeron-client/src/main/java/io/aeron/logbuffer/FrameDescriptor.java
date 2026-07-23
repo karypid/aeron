@@ -212,7 +212,7 @@ public final class FrameDescriptor
      */
     public static int frameVersion(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getByte(versionOffset(termOffset));
+        return buffer.getByte(termOffset + VERSION_OFFSET);
     }
 
     /**
@@ -224,7 +224,7 @@ public final class FrameDescriptor
      */
     public static byte frameFlags(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getByte(flagsOffset(termOffset));
+        return buffer.getByte(termOffset + FLAGS_OFFSET);
     }
 
     /**
@@ -236,7 +236,7 @@ public final class FrameDescriptor
      */
     public static int frameType(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getShort(typeOffset(termOffset), LITTLE_ENDIAN) & 0xFFFF;
+        return buffer.getShort(termOffset + TYPE_OFFSET, LITTLE_ENDIAN) & 0xFFFF;
     }
 
     /**
@@ -248,7 +248,7 @@ public final class FrameDescriptor
      */
     public static boolean isPaddingFrame(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getShort(typeOffset(termOffset)) == PADDING_FRAME_TYPE;
+        return buffer.getShort(termOffset + TYPE_OFFSET) == PADDING_FRAME_TYPE;
     }
 
     /**
@@ -272,7 +272,7 @@ public final class FrameDescriptor
      */
     public static int frameTermId(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getInt(termIdOffset(termOffset), LITTLE_ENDIAN);
+        return buffer.getInt(termOffset + TERM_ID_OFFSET, LITTLE_ENDIAN);
     }
 
     /**
@@ -284,7 +284,7 @@ public final class FrameDescriptor
      */
     public static int frameSessionId(final UnsafeBuffer buffer, final int termOffset)
     {
-        return buffer.getInt(sessionIdOffset(termOffset), LITTLE_ENDIAN);
+        return buffer.getInt(termOffset + SESSION_ID_OFFSET, LITTLE_ENDIAN);
     }
 
     /**
@@ -333,7 +333,7 @@ public final class FrameDescriptor
      */
     public static void frameType(final UnsafeBuffer buffer, final int termOffset, final int type)
     {
-        buffer.putShort(typeOffset(termOffset), (short)type, LITTLE_ENDIAN);
+        buffer.putShort(termOffset + TYPE_OFFSET, (short)type, LITTLE_ENDIAN);
     }
 
     /**
@@ -345,7 +345,7 @@ public final class FrameDescriptor
      */
     public static void frameFlags(final UnsafeBuffer buffer, final int termOffset, final byte flags)
     {
-        buffer.putByte(flagsOffset(termOffset), flags);
+        buffer.putByte(termOffset + FLAGS_OFFSET, flags);
     }
 
     /**
@@ -356,7 +356,7 @@ public final class FrameDescriptor
      */
     public static void frameTermOffset(final UnsafeBuffer buffer, final int termOffset)
     {
-        buffer.putInt(termOffsetOffset(termOffset), termOffset, LITTLE_ENDIAN);
+        buffer.putInt(termOffset + TERM_OFFSET, termOffset, LITTLE_ENDIAN);
     }
 
     /**
@@ -368,7 +368,7 @@ public final class FrameDescriptor
      */
     public static void frameTermId(final UnsafeBuffer buffer, final int termOffset, final int termId)
     {
-        buffer.putInt(termIdOffset(termOffset), termId, LITTLE_ENDIAN);
+        buffer.putInt(termOffset + TERM_ID_OFFSET, termId, LITTLE_ENDIAN);
     }
 
     /**
@@ -380,6 +380,17 @@ public final class FrameDescriptor
      */
     public static void frameSessionId(final UnsafeBuffer buffer, final int termOffset, final int sessionId)
     {
-        buffer.putInt(sessionIdOffset(termOffset), sessionId, LITTLE_ENDIAN);
+        buffer.putInt(termOffset + SESSION_ID_OFFSET, sessionId, LITTLE_ENDIAN);
+    }
+
+    /**
+     * Check if specified {@code length} is frame-aligned.
+     *
+     * @param length to check.
+     * @return {@code true} if properly aligned.
+     */
+    public static boolean isFrameAligned(final int length)
+    {
+        return 0 == (length & (FRAME_ALIGNMENT - 1));
     }
 }

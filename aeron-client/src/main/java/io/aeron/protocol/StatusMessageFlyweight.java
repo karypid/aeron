@@ -16,6 +16,7 @@
 package io.aeron.protocol;
 
 import io.aeron.exceptions.AeronException;
+import io.aeron.logbuffer.FrameDescriptor;
 import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.ByteBuffer;
@@ -28,7 +29,7 @@ import static org.agrona.BitUtil.SIZE_OF_LONG;
  * Flyweight for a Status Message Frame.
  * <p>
  * <a target="_blank" href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#status-messages">
- *     Status Message</a> wiki page.
+ * Status Message</a> wiki page.
  */
 public class StatusMessageFlyweight extends HeaderFlyweight
 {
@@ -356,7 +357,7 @@ public class StatusMessageFlyweight extends HeaderFlyweight
      * Set long value into a field that is not aligned on an 8 byte boundary.
      *
      * @param offset of the field to put.
-     * @param value of the field to put.
+     * @param value  of the field to put.
      * @return this for fluent API.
      */
     public StatusMessageFlyweight putLongUnaligned(final int offset, final long value)
@@ -385,6 +386,20 @@ public class StatusMessageFlyweight extends HeaderFlyweight
         }
 
         return this;
+    }
+
+    /**
+     * Check if the SM frame is valid given the {@code termLength}.
+     *
+     * @param termLength to check against.
+     * @return {@code true} if valid.
+     */
+    public boolean isValid(final int termLength)
+    {
+        final int termOffset = consumptionTermOffset();
+        final int receiverWindowLength = receiverWindowLength();
+        return termOffset >= 0 && termOffset < termLength && FrameDescriptor.isFrameAligned(termOffset) &&
+            receiverWindowLength >= 0 && receiverWindowLength <= (termLength >> 1);
     }
 
     /**

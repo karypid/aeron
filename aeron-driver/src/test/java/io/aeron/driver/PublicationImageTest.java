@@ -37,6 +37,9 @@ import org.agrona.concurrent.status.CountersManager;
 import org.agrona.concurrent.status.Position;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 
 import java.net.InetSocketAddress;
@@ -346,6 +349,56 @@ class PublicationImageTest
         inOrder.verify(reportEntry).recordObservation(2048, 700);
         inOrder.verify(reportEntry).recordObservation(256, 800);
         inOrder.verifyNoMoreInteractions();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { HDR_TYPE_DATA, HDR_TYPE_PAD })
+    void shouldRejectFrameIfTermOffsetIsNegative(final int type)
+    {
+        final int termId = 0;
+        final int termOffset = -128;
+        final int alignedFrameLength = writeFrame(0, termOffset, termId, 32, (short)0, type, 0);
+        final InetSocketAddress srcAddress = mock(InetSocketAddress.class);
+
+        assertEquals(
+            0,
+            image.insertPacket(termId, termOffset, buffer, alignedFrameLength, TRANSPORT_INDEX, srcAddress));
+
+        assertEquals(1, ctx.systemCounters().get(SystemCounterDescriptor.INVALID_PACKETS).get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { HDR_TYPE_DATA, HDR_TYPE_PAD })
+    void shouldRejectFrameIfTermOffsetIsNotAlignedOnFrameBoundary(final int type)
+    {
+        final int termId = 0;
+        final int termOffset = 500;
+        final int alignedFrameLength = writeFrame(0, termOffset, termId, 32, (short)0, type, 0);
+        final InetSocketAddress srcAddress = mock(InetSocketAddress.class);
+
+        assertEquals(
+            0,
+            image.insertPacket(termId, termOffset, buffer, alignedFrameLength, TRANSPORT_INDEX, srcAddress));
+
+        assertEquals(1, ctx.systemCounters().get(SystemCounterDescriptor.INVALID_PACKETS).get());
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "0,130", "1,160", "0,2147483647", "1,2147483616"})
+    void shouldRejectFrameIfTermOffsetPlusAlignedFrameLengthExceedTermBufferLength(
+        final int type, final int frameLength)
+    {
+        final int termId = 0;
+        final int termOffset = TERM_LENGTH - 128;
+        headerFlyweight.wrap(buffer, 0, HEADER_LENGTH);
+        headerFlyweight.termOffset(termOffset).frameLength(frameLength).headerType(type);
+        final InetSocketAddress srcAddress = mock(InetSocketAddress.class);
+
+        assertEquals(
+            0,
+            image.insertPacket(termId, termOffset, buffer, HEADER_LENGTH, TRANSPORT_INDEX, srcAddress));
+
+        assertEquals(1, ctx.systemCounters().get(SystemCounterDescriptor.INVALID_PACKETS).get());
     }
 
     private int writeFrame(

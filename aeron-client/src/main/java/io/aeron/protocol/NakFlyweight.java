@@ -15,6 +15,7 @@
  */
 package io.aeron.protocol;
 
+import io.aeron.logbuffer.FrameDescriptor;
 import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.ByteBuffer;
@@ -26,8 +27,8 @@ import static java.nio.ByteOrder.LITTLE_ENDIAN;
  * Flyweight for a NAK Message Frame.
  * <p>
  * <a target="_blank"
- *    href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#data-recovery-via-retransmit-request">
- *    Data Loss Recovery</a> wiki page.
+ * href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#data-recovery-via-retransmit-request">
+ * Data Loss Recovery</a> wiki page.
  */
 // CHECKSTYLE:ON:LineLength
 public class NakFlyweight extends HeaderFlyweight
@@ -202,6 +203,20 @@ public class NakFlyweight extends HeaderFlyweight
         putInt(LENGTH_FIELD_OFFSET, length, LITTLE_ENDIAN);
 
         return this;
+    }
+
+    /**
+     * Check if the NAK frame is valid given the {@code termLength}.
+     *
+     * @param termLength to check against.
+     * @return {@code true} if valid.
+     */
+    public boolean isValid(final int termLength)
+    {
+        final int termOffset = termOffset();
+        final int length = length();
+        return termOffset >= 0 && termOffset < termLength && FrameDescriptor.isFrameAligned(termOffset) &&
+            length >= 0 && ((long)termOffset + length) <= termLength;
     }
 
     /**

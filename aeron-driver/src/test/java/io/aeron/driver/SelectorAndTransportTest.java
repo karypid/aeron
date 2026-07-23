@@ -68,7 +68,8 @@ class SelectorAndTransportTest
     private static final int SESSION_ID = 0xdeadbeef;
     private static final int STREAM_ID = 0x44332211;
     private static final int TERM_ID = 0x99887766;
-    private static final int FRAME_LENGTH = 24;
+    private static final int FRAME_LENGTH = 32;
+    private static final int TERM_LENGTH = 64 * 1024;
 
     private static final UdpChannel SRC_DST =
         UdpChannel.parse("aeron:udp?interface=localhost:" + SRC_PORT + "|endpoint=localhost:" + RCV_PORT);
@@ -114,6 +115,7 @@ class SelectorAndTransportTest
         when(mockSystemCounters.get(any())).thenReturn(mockStatusMessagesReceivedCounter);
         when(mockPublication.streamId()).thenReturn(STREAM_ID);
         when(mockPublication.sessionId()).thenReturn(SESSION_ID);
+        when(mockPublication.termBufferLength()).thenReturn(TERM_LENGTH);
         when(mockPublication.isValidStatusMessage(any(StatusMessageFlyweight.class))).thenReturn(true);
     }
 
@@ -234,7 +236,8 @@ class SelectorAndTransportTest
         encodeDataHeader
             .sessionId(SESSION_ID)
             .streamId(STREAM_ID)
-            .termId(TERM_ID);
+            .termId(TERM_ID)
+            .termOffset(0);
         byteBuffer.position(0).limit(FRAME_LENGTH);
 
         processLoop(dataTransportPoller, 5);

@@ -22,13 +22,15 @@ import java.nio.ByteBuffer;
 
 import static java.lang.Integer.toHexString;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
-import static org.agrona.BitUtil.*;
+import static org.agrona.BitUtil.SIZE_OF_LONG;
+import static org.agrona.BitUtil.SIZE_OF_SHORT;
+import static org.agrona.BitUtil.align;
 
 /**
  * Flyweight for Resolution Entry header.
  * <p>
  * <a target="_blank"
- *    href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification">Protocol Specification</a>
+ * href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification">Protocol Specification</a>
  * wiki page.
  */
 public class ResolutionEntryFlyweight extends HeaderFlyweight
@@ -84,9 +86,29 @@ public class ResolutionEntryFlyweight extends HeaderFlyweight
     public static final int ADDRESS_FIELD_OFFSET = 8;
 
     /**
+     * Offset in the frame at which the name field being for IPv4 frame.
+     */
+    public static final int NAME_FIELD_OFFSET_IP4 = ADDRESS_FIELD_OFFSET + ADDRESS_LENGTH_IP4;
+
+    /**
+     * Offset in the frame at which the name field being for IPv6 frame.
+     */
+    public static final int NAME_FIELD_OFFSET_IP6 = ADDRESS_FIELD_OFFSET + ADDRESS_LENGTH_IP6;
+
+    /**
      * Maximum length allowed for a name.
      */
     public static final int MAX_NAME_LENGTH = 512;
+
+    /**
+     * Minimum length in bytes for a valid IPv4 resolution entry, i.e. without commot header and with empty name.
+     */
+    public static final int MIN_IPV4_FRAME_LENGTH = NAME_FIELD_OFFSET_IP4 + SIZE_OF_SHORT;
+
+    /**
+     * Minimum length in bytes for a valid IPv6 resolution entry, i.e. without commot header and with empty name.
+     */
+    public static final int MIN_IPV6_FRAME_LENGTH = NAME_FIELD_OFFSET_IP6 + SIZE_OF_SHORT;
 
     /**
      * Default constructor which can later be used to wrap a frame.
@@ -389,6 +411,33 @@ public class ResolutionEntryFlyweight extends HeaderFlyweight
     }
 
     /**
+     * Check if the resolution frame is valid given the contents of the wrapped buffer.
+     *
+     * @return {@code true} if frame is valid.
+     */
+    public boolean isValid()
+    {
+        final int capacity = capacity();
+        if (capacity >= MIN_IPV4_FRAME_LENGTH)
+        {
+            final byte resType = resType();
+            if (RES_TYPE_NAME_TO_IP4_MD == resType)
+            {
+                final int nameLength = getShort(NAME_FIELD_OFFSET_IP4, LITTLE_ENDIAN);
+                return nameLength > 0 && nameLength <= MAX_NAME_LENGTH &&
+                    capacity - MIN_IPV4_FRAME_LENGTH >= nameLength;
+            }
+            else if (RES_TYPE_NAME_TO_IP6_MD == resType && capacity >= MIN_IPV6_FRAME_LENGTH)
+            {
+                final int nameLength = getShort(NAME_FIELD_OFFSET_IP6, LITTLE_ENDIAN);
+                return nameLength > 0 && nameLength <= MAX_NAME_LENGTH &&
+                    capacity - MIN_IPV6_FRAME_LENGTH >= nameLength;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Offset in the entry at which the name begins depending on resolution type.
      *
      * @param resType for the protocol family.
@@ -399,10 +448,10 @@ public class ResolutionEntryFlyweight extends HeaderFlyweight
         switch (resType)
         {
             case RES_TYPE_NAME_TO_IP4_MD:
-                return ADDRESS_FIELD_OFFSET + ADDRESS_LENGTH_IP4;
+                return NAME_FIELD_OFFSET_IP4;
 
             case RES_TYPE_NAME_TO_IP6_MD:
-                return ADDRESS_FIELD_OFFSET + ADDRESS_LENGTH_IP6;
+                return NAME_FIELD_OFFSET_IP6;
         }
 
         throw new IllegalStateException("unknown RES_TYPE=" + resType);

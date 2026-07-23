@@ -25,6 +25,7 @@ import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.logbuffer.LogBufferUnblocker;
 import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.ErrorFlyweight;
+import io.aeron.protocol.NakFlyweight;
 import io.aeron.protocol.RttMeasurementFlyweight;
 import io.aeron.protocol.SetupFlyweight;
 import io.aeron.protocol.StatusMessageFlyweight;
@@ -367,6 +368,17 @@ public final class NetworkPublication
         return streamId;
     }
 
+
+    /**
+     * Term buffer length.
+     *
+     * @return term buffer length.
+     */
+    public int termBufferLength()
+    {
+        return termBufferLength;
+    }
+
     /**
      * Trigger the sending of a SETUP frame so a connection can be established.
      *
@@ -444,14 +456,13 @@ public final class NetworkPublication
     /**
      * Process a NAK message so a retransmit can occur.
      *
-     * @param termId     in which the loss occurred.
-     * @param termOffset at which the loss begins.
-     * @param length     of the loss.
+     * @param msg flyweight over the network packet.
      */
-    public void onNak(final int termId, final int termOffset, final int length)
+    public void onNak(final NakFlyweight msg)
     {
         senderNaksReceived.incrementRelease();
-        retransmitHandler.onNak(termId, termOffset, length, termBufferLength, mtuLength, flowControl, this);
+        retransmitHandler.onNak(
+            msg.termId(), msg.termOffset(), msg.length(), termBufferLength, mtuLength, flowControl, this);
     }
 
     /**
@@ -721,11 +732,6 @@ public final class NetworkPublication
     long tag()
     {
         return tag;
-    }
-
-    int termBufferLength()
-    {
-        return termBufferLength;
     }
 
     int mtuLength()

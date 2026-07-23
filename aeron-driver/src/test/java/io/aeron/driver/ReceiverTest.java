@@ -24,6 +24,7 @@ import io.aeron.driver.media.ReceiveChannelEndpointThreadLocals;
 import io.aeron.driver.media.UdpChannel;
 import io.aeron.driver.media.WildcardPortManager;
 import io.aeron.driver.reports.LossReport;
+import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.driver.status.SystemCounters;
 import io.aeron.logbuffer.FrameDescriptor;
 import io.aeron.logbuffer.Header;
@@ -64,6 +65,7 @@ import static io.aeron.logbuffer.LogBufferDescriptor.indexByTerm;
 import static org.agrona.BitUtil.align;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -72,12 +74,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(InterruptingTestCallback.class)
 class ReceiverTest
 {
     private static final int TERM_BUFFER_LENGTH = TERM_MIN_LENGTH;
+    private static final int MTU_LENGTH = 2048;
     private static final int POSITION_BITS_TO_SHIFT = LogBufferDescriptor.positionBitsToShift(TERM_BUFFER_LENGTH);
     private static final String URI = "aeron:udp?endpoint=localhost:4005";
     private static final UdpChannel UDP_CHANNEL = UdpChannel.parse(URI);
@@ -144,6 +148,7 @@ class ReceiverTest
         .receiverCachedNanoClock(nanoClock)
         .lossReport(mockLossReport)
         .receiverDutyCycleTracker(new DutyCycleTracker());
+    private final AtomicCounter[] systemCounters = new AtomicCounter[SystemCounterDescriptor.values().length];
 
     private ReceiveChannelEndpoint receiveChannelEndpoint;
 
@@ -157,7 +162,18 @@ class ReceiverTest
 
         when(POSITION.getVolatile())
             .thenReturn(computePosition(ACTIVE_TERM_ID, 0, POSITION_BITS_TO_SHIFT, ACTIVE_TERM_ID));
-        when(mockSystemCounters.get(any())).thenReturn(mock(AtomicCounter.class));
+
+        for (final SystemCounterDescriptor descriptor : SystemCounterDescriptor.values())
+        {
+            systemCounters[descriptor.id()] = mock(AtomicCounter.class);
+        }
+        when(mockSystemCounters.get(any()))
+            .thenAnswer(invocation ->
+            {
+                final SystemCounterDescriptor descriptor = invocation.getArgument(0);
+                return systemCounters[descriptor.id()];
+            });
+
         when(congestionControl.onTrackRebuild(
             anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), anyBoolean()))
             .thenReturn(CongestionControl.packOutcome(INITIAL_WINDOW_LENGTH, false));
@@ -635,6 +651,20 @@ class ReceiverTest
         verify(mockImage, never()).removeFromDispatcher();
     }
 
+    @Test
+    void shouldRejectInvalidStatusMessage()
+    {
+        fillSetupFrame(setupHeader);
+        setupHeader.termOffset(-1);
+        assertFalse(setupHeader.isValid());
+
+        receiveChannelEndpoint.onSetupMessage(setupHeader, setupBuffer, SetupFlyweight.HEADER_LENGTH, senderAddress, 0);
+
+        final AtomicCounter invalidPackets = mockSystemCounters.get(SystemCounterDescriptor.INVALID_PACKETS);
+        verify(invalidPackets).increment();
+        verifyNoMoreInteractions(invalidPackets);
+    }
+
     private void fillDataFrame(final DataHeaderFlyweight header, final int termOffset)
     {
         header.wrap(dataBuffer);
@@ -668,6 +698,8 @@ class ReceiverTest
             .initialTermId(INITIAL_TERM_ID)
             .activeTermId(ACTIVE_TERM_ID)
             .termOffset(termOffset)
+            .termLength(TERM_BUFFER_LENGTH)
+            .mtuLength(MTU_LENGTH)
             .frameLength(SetupFlyweight.HEADER_LENGTH)
             .headerType(HeaderFlyweight.HDR_TYPE_SETUP)
             .flags((byte)0)

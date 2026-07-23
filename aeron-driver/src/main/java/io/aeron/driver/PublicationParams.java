@@ -136,7 +136,7 @@ final class PublicationParams
                     TERM_OFFSET_PARAM_NAME + "=" + params.termOffset + " out of range: channel=" + channelUri);
             }
 
-            if ((params.termOffset & (FrameDescriptor.FRAME_ALIGNMENT - 1)) != 0)
+            if (!FrameDescriptor.isFrameAligned(params.termOffset))
             {
                 throw new InvalidChannelException(
                     TERM_OFFSET_PARAM_NAME + "=" + params.termOffset +

@@ -80,7 +80,6 @@ class RetransmitHandlerTest
 
     private final RetransmitSender sender = mock(RetransmitSender.class);
     private final FlowControl fc = mock(FlowControl.class);
-    private final AtomicCounter invalidPackets = mock(AtomicCounter.class);
     private final AtomicCounter retransmitOverflow = mock(AtomicCounter.class);
 
     private final HeaderWriter headerWriter = HeaderWriter.newInstance(
@@ -88,7 +87,6 @@ class RetransmitHandlerTest
 
     private RetransmitHandler handler = new RetransmitHandler(() ->
         currentTime,
-        invalidPackets,
         DELAY_GENERATOR,
         LINGER_GENERATOR,
         true,
@@ -353,40 +351,6 @@ class RetransmitHandlerTest
     }
 
     @Test
-    void shouldDetectInvalidNaksInvalidOffset()
-    {
-        handler = newZeroDelayRetransmitHandler();
-
-        handler.onNak(
-            TERM_ID, TERM_BUFFER_LENGTH - 16, ALIGNED_FRAME_LENGTH, TERM_BUFFER_LENGTH, MTU_LENGTH, fc, sender);
-
-        verify(invalidPackets).increment();
-        verifyNoInteractions(sender);
-    }
-
-    @Test
-    void shouldDetectInvalidNaksNegativeOffset()
-    {
-        handler = newZeroDelayRetransmitHandler();
-
-        handler.onNak(TERM_ID, -128, ALIGNED_FRAME_LENGTH, TERM_BUFFER_LENGTH, MTU_LENGTH, fc, sender);
-
-        verify(invalidPackets).increment();
-        verifyNoInteractions(sender);
-    }
-
-    @Test
-    void shouldDetectInvalidNaksNegativeLength()
-    {
-        handler = newZeroDelayRetransmitHandler();
-
-        handler.onNak(TERM_ID, 0, -ALIGNED_FRAME_LENGTH, TERM_BUFFER_LENGTH, MTU_LENGTH, fc, sender);
-
-        verify(invalidPackets).increment();
-        verifyNoInteractions(sender);
-    }
-
-    @Test
     void shouldIgnoreEmptyNak()
     {
         handler = newZeroDelayRetransmitHandler();
@@ -400,7 +364,6 @@ class RetransmitHandlerTest
     {
         return new RetransmitHandler(() ->
             currentTime,
-            invalidPackets,
             ZERO_DELAY_GENERATOR,
             LINGER_GENERATOR,
             true,

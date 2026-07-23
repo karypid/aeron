@@ -733,6 +733,12 @@ public class ReceiveChannelEndpoint extends ReceiveChannelEndpointRhsPadding
         final InetSocketAddress srcAddress,
         final int transportIndex)
     {
+        if (!header.isValid())
+        {
+            invalidPackets.increment();
+            return;
+        }
+
         updateTimeOfLastActivityNs(cachedNanoClock.nanoTime(), transportIndex);
         dispatcher.onSetupMessage(this, header, srcAddress, transportIndex);
     }
@@ -754,7 +760,7 @@ public class ReceiveChannelEndpoint extends ReceiveChannelEndpointRhsPadding
         final int transportIndex)
     {
         final long requestedReceiverId = header.receiverId();
-        if (requestedReceiverId == receiverId || requestedReceiverId == 0)
+        if (requestedReceiverId == receiverId || 0 == requestedReceiverId)
         {
             updateTimeOfLastActivityNs(cachedNanoClock.nanoTime(), transportIndex);
             dispatcher.onRttMeasurement(this, header, srcAddress, transportIndex);
@@ -1098,7 +1104,7 @@ public class ReceiveChannelEndpoint extends ReceiveChannelEndpointRhsPadding
         {
             final int offset = udpChannel.channelReceiveTimestampOffset();
 
-            if (DataHeaderFlyweight.DATA_OFFSET + offset + BitUtil.SIZE_OF_LONG < length)
+            if (DataHeaderFlyweight.DATA_OFFSET + offset + BitUtil.SIZE_OF_LONG < length) // FIXME: bug
             {
                 buffer.putLong(
                     DataHeaderFlyweight.DATA_OFFSET + offset, channelReceiveTimestampClock.nanoTime(), LITTLE_ENDIAN);

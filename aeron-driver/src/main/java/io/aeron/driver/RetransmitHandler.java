@@ -15,7 +15,6 @@
  */
 package io.aeron.driver;
 
-import io.aeron.protocol.DataHeaderFlyweight;
 import org.agrona.concurrent.NanoClock;
 import org.agrona.concurrent.status.AtomicCounter;
 
@@ -34,7 +33,6 @@ public final class RetransmitHandler
     private final NanoClock nanoClock;
     private final FeedbackDelayGenerator delayGenerator;
     private final FeedbackDelayGenerator lingerTimeoutGenerator;
-    private final AtomicCounter invalidPackets;
     private final boolean hasGroupSemantics;
     private final AtomicCounter retransmitOverflowCounter;
 
@@ -44,7 +42,6 @@ public final class RetransmitHandler
      * Create a handler for the dealing with the reception of frame request a frame to be retransmitted.
      *
      * @param nanoClock                 used to determine time.
-     * @param invalidPackets            for recording invalid packets.
      * @param delayGenerator            to use for delay determination.
      * @param lingerTimeoutGenerator    to use for linger timeout.
      * @param hasGroupSemantics         indicates multicast/MDC semantics.
@@ -53,7 +50,6 @@ public final class RetransmitHandler
      */
     public RetransmitHandler(
         final NanoClock nanoClock,
-        final AtomicCounter invalidPackets,
         final FeedbackDelayGenerator delayGenerator,
         final FeedbackDelayGenerator lingerTimeoutGenerator,
         final boolean hasGroupSemantics,
@@ -61,7 +57,6 @@ public final class RetransmitHandler
         final AtomicCounter retransmitOverflowCounter)
     {
         this.nanoClock = nanoClock;
-        this.invalidPackets = invalidPackets;
         this.delayGenerator = delayGenerator;
         this.lingerTimeoutGenerator = lingerTimeoutGenerator;
         this.hasGroupSemantics = hasGroupSemantics;
@@ -96,7 +91,7 @@ public final class RetransmitHandler
         final FlowControl flowControl,
         final RetransmitSender retransmitSender)
     {
-        if (!isInvalid(termOffset, termLength, length) && 0 != length)
+        if (0 != length)
         {
             final int retransmitLength = flowControl.maxRetransmissionLength(termOffset, length, termLength, mtuLength);
             final RetransmitAction action = scanForAvailableRetransmit(termId, termOffset, retransmitLength);
@@ -161,19 +156,6 @@ public final class RetransmitHandler
                 }
             }
         }
-    }
-
-    private boolean isInvalid(final int termOffset, final int termLength, final int length)
-    {
-        final boolean isInvalid = (termOffset > (termLength - DataHeaderFlyweight.HEADER_LENGTH)) || (termOffset < 0) ||
-            (length < 0);
-
-        if (isInvalid)
-        {
-            invalidPackets.increment();
-        }
-
-        return isInvalid;
     }
 
     private RetransmitAction scanForAvailableRetransmit(final int termId, final int termOffset, final int length)

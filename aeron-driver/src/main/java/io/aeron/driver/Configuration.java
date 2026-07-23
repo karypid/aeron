@@ -2423,7 +2423,7 @@ public final class Configuration
                 "mtuLength=" + mtuLength + " > MAX_UDP_PAYLOAD_LENGTH=" + MAX_UDP_PAYLOAD_LENGTH);
         }
 
-        if ((mtuLength & (FrameDescriptor.FRAME_ALIGNMENT - 1)) != 0)
+        if (!FrameDescriptor.isFrameAligned(mtuLength))
         {
             throw new ConfigurationException(
                 "mtuLength=" + mtuLength + " is not a multiple of FRAME_ALIGNMENT=" + FrameDescriptor.FRAME_ALIGNMENT);

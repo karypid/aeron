@@ -21,11 +21,13 @@ import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.ReceiveDestinationTransport;
 import io.aeron.driver.reports.LossReport;
 import io.aeron.driver.status.SystemCounters;
+import io.aeron.logbuffer.FrameDescriptor;
 import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.logbuffer.TermRebuilder;
 import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.RttMeasurementFlyweight;
 import io.aeron.protocol.StatusMessageFlyweight;
+import org.agrona.BitUtil;
 import org.agrona.CloseHelper;
 import org.agrona.ErrorHandler;
 import org.agrona.collections.ArrayListUtil;
@@ -51,6 +53,7 @@ import static io.aeron.driver.LossDetector.rebuildOffset;
 import static io.aeron.driver.status.SystemCounterDescriptor.FLOW_CONTROL_OVER_RUNS;
 import static io.aeron.driver.status.SystemCounterDescriptor.FLOW_CONTROL_UNDER_RUNS;
 import static io.aeron.driver.status.SystemCounterDescriptor.HEARTBEATS_RECEIVED;
+import static io.aeron.driver.status.SystemCounterDescriptor.INVALID_PACKETS;
 import static io.aeron.driver.status.SystemCounterDescriptor.LOSS_GAP_FILLS;
 import static io.aeron.driver.status.SystemCounterDescriptor.NAK_MESSAGES_SENT;
 import static io.aeron.driver.status.SystemCounterDescriptor.PUBLICATION_IMAGES_REVOKED;
@@ -209,6 +212,7 @@ public final class PublicationImage
     private final AtomicCounter flowControlOverRuns;
     private final AtomicCounter lossGapFills;
     private final AtomicCounter publicationImagesRevoked;
+    private final AtomicCounter invalidPackets;
     private final EpochClock epochClock;
     private final NanoClock nanoClock;
     private final RawLog rawLog;
@@ -277,6 +281,7 @@ public final class PublicationImage
         flowControlOverRuns = systemCounters.get(FLOW_CONTROL_OVER_RUNS);
         lossGapFills = systemCounters.get(LOSS_GAP_FILLS);
         publicationImagesRevoked = systemCounters.get(PUBLICATION_IMAGES_REVOKED);
+        invalidPackets = systemCounters.get(INVALID_PACKETS);
 
         imageConnections = ArrayUtil.ensureCapacity(imageConnections, transportIndex + 1);
         imageConnections[transportIndex] = new ImageConnection(nowNs, controlAddress);
@@ -627,6 +632,17 @@ public final class PublicationImage
             return 0;
         }
 
+        final int termLength = termLengthMask + 1;
+        // validate first frame in the packet (assumes `length` and `frameLength` were validated already)
+        if (termOffset < 0 ||
+            !FrameDescriptor.isFrameAligned(termOffset) ||
+            ((long)termOffset + BitUtil.align(
+                (long)FrameDescriptor.frameLength(buffer, 0), FrameDescriptor.FRAME_ALIGNMENT)) > termLength)
+        {
+            invalidPackets.increment();
+            return 0;
+        }
+
         final boolean isHeartbeat = DataHeaderFlyweight.isHeartbeat(buffer, length);
         final long packetPosition = computePosition(termId, termOffset, positionBitsToShift, initialTermId);
         final long proposedPosition = isHeartbeat ? packetPosition : packetPosition + length;
@@ -635,7 +651,7 @@ public final class PublicationImage
         {
             if (isHeartbeat)
             {
-                final long potentialWindowBottom = lastSmPosition - (termLengthMask + 1);
+                final long potentialWindowBottom = lastSmPosition - termLength;
                 final long publicationWindowBottom = potentialWindowBottom < 0 ? 0 : potentialWindowBottom;
 
                 if (packetPosition >= publicationWindowBottom)

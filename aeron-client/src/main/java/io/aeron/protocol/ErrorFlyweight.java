@@ -47,7 +47,7 @@ import static org.agrona.BitUtil.SIZE_OF_LONG;
  *    +---------------------------------------------------------------+
  * 36 |                     Error String Length                       |
  *    +---------------------------------------------------------------+
- * 40 |                         Error String                        ...
+ * 40 |                         Error String (ASCII)                ...
  *    +---------------------------------------------------------------+
  *    ...                                                             |
  *    +---------------------------------------------------------------+
@@ -283,16 +283,39 @@ public class ErrorFlyweight extends HeaderFlyweight
     }
 
     /**
-     * Set the error string for the message.
+     * Set the error string for the message and updates the frame length.
      *
-     * @param errorMessage the error string in UTF-8.
+     * @param errorMessage the error string in ASCII encoding.
      * @return this for a fluent API.
      */
     public ErrorFlyweight errorMessage(final String errorMessage)
     {
-        final int headerAndMessageLength = putStringAscii(ERROR_STRING_FIELD_OFFSET, errorMessage, LITTLE_ENDIAN);
-        frameLength(HEADER_LENGTH + (headerAndMessageLength - STR_HEADER_LEN));
+        final int length;
+        if (null == errorMessage)
+        {
+            length = 0;
+            putInt(ERROR_STRING_FIELD_OFFSET, length, LITTLE_ENDIAN);
+        }
+        else
+        {
+            length = Math.min(MAX_ERROR_MESSAGE_LENGTH, errorMessage.length());
+            putInt(ERROR_STRING_FIELD_OFFSET, length, LITTLE_ENDIAN);
+            putStringWithoutLengthAscii(ERROR_STRING_FIELD_OFFSET + STR_HEADER_LEN, errorMessage, 0, length);
+        }
+        frameLength(HEADER_LENGTH + length);
         return this;
+    }
+
+    /**
+     * Check if the error frame is properly formed.
+     *
+     * @return {@code true} if valid.
+     */
+    public boolean isValid()
+    {
+        final int errorLength = getInt(ERROR_STRING_FIELD_OFFSET, LITTLE_ENDIAN);
+        return errorLength >= 0 && errorLength <= MAX_ERROR_MESSAGE_LENGTH &&
+            HEADER_LENGTH + errorLength <= frameLength();
     }
 
     /**

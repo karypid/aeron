@@ -47,7 +47,7 @@ import java.util.BitSet;
 import java.util.concurrent.TimeUnit;
 
 import static io.aeron.driver.DriverNameResolverCache.fullLengthMatch;
-import static io.aeron.protocol.ResolutionEntryFlyweight.HDR_TYPE_RES;
+import static io.aeron.protocol.ResolutionEntryFlyweight.*;
 import static io.aeron.protocol.ResolutionEntryFlyweight.MIN_HEADER_LENGTH;
 import static io.aeron.protocol.ResolutionEntryFlyweight.RES_TYPE_NAME_TO_IP4_MD;
 import static io.aeron.protocol.ResolutionEntryFlyweight.RES_TYPE_NAME_TO_IP6_MD;
@@ -83,8 +83,8 @@ final class DriverNameResolver implements UdpNameResolutionTransport.UdpFrameHan
     private final AtomicCounter shortSends;
     private AtomicCounter neighborsCounter;
     private AtomicCounter cacheEntriesCounter;
-    private final byte[] nameTempBuffer = new byte[ResolutionEntryFlyweight.MAX_NAME_LENGTH];
-    private final byte[] addressTempBuffer = new byte[ResolutionEntryFlyweight.ADDRESS_LENGTH_IP6];
+    private final byte[] nameTempBuffer = new byte[MAX_NAME_LENGTH];
+    private final byte[] addressTempBuffer = new byte[ADDRESS_LENGTH_IP6];
 
     private final String localDriverName;
     private InetSocketAddress localSocketAddress;
@@ -317,30 +317,26 @@ final class DriverNameResolver implements UdpNameResolutionTransport.UdpFrameHan
     public int onFrame(
         final UnsafeBuffer unsafeBuffer, final int length, final InetSocketAddress srcAddress, final long nowMs)
     {
-        if (headerFlyweight.headerType() == HDR_TYPE_RES)
+        int offset = MIN_HEADER_LENGTH;
+        int workCount = 0;
+
+        while (length > offset)
         {
-            int offset = MIN_HEADER_LENGTH;
-
-            while (length > offset)
+            resolutionEntryFlyweight.wrap(unsafeBuffer, offset, length - offset);
+            if (resolutionEntryFlyweight.isValid())
             {
-                resolutionEntryFlyweight.wrap(unsafeBuffer, offset, length - offset);
-
-                if (HeaderFlyweight.CURRENT_VERSION != headerFlyweight.version() ||
-                    (length - offset) < resolutionEntryFlyweight.entryLength())
-                {
-                    invalidPackets.increment();
-                    return 0;
-                }
-
                 onResolutionEntry(resolutionEntryFlyweight, srcAddress, nowMs);
-
                 offset += resolutionEntryFlyweight.entryLength();
+                workCount++;
             }
-
-            return length;
+            else
+            {
+                invalidPackets.increment();
+                break;
+            }
         }
 
-        return 0;
+        return workCount;
     }
 
     private void openDatagramChannel()
@@ -483,7 +479,7 @@ final class DriverNameResolver implements UdpNameResolutionTransport.UdpFrameHan
         byte[] addr = addressTempBuffer;
 
         final int addressLength = resolutionEntryFlyweight.getAddress(addressTempBuffer);
-        if (isSelf && ResolutionEntryFlyweight.isAnyLocalAddress(addressTempBuffer, addressLength))
+        if (isSelf && isAnyLocalAddress(addressTempBuffer, addressLength))
         {
             addr = srcAddress.getAddress().getAddress();
         }

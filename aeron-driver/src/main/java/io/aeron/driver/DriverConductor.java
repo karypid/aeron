@@ -106,7 +106,6 @@ import static io.aeron.driver.PublicationParams.validateMtuForSndbuf;
 import static io.aeron.driver.PublicationParams.validateSpiesSimulateConnection;
 import static io.aeron.driver.SubscriptionParams.validateInitialWindowForRcvBuf;
 import static io.aeron.driver.status.SystemCounterDescriptor.IMAGES_REJECTED;
-import static io.aeron.driver.status.SystemCounterDescriptor.INVALID_PACKETS;
 import static io.aeron.driver.status.SystemCounterDescriptor.RESOLUTION_CHANGES;
 import static io.aeron.driver.status.SystemCounterDescriptor.RETRANSMIT_OVERFLOW;
 import static io.aeron.driver.status.SystemCounterDescriptor.UNBLOCKED_COMMANDS;
@@ -1383,7 +1382,6 @@ public final class DriverConductor implements Agent
 
             final RetransmitHandler retransmitHandler = new RetransmitHandler(
                 ctx.senderCachedNanoClock(),
-                ctx.systemCounters().get(INVALID_PACKETS),
                 ctx.retransmitUnicastDelayGenerator(),
                 ctx.retransmitUnicastLingerGenerator(),
                 udpChannel.hasGroupSemantics(),
@@ -3564,6 +3562,7 @@ public final class DriverConductor implements Agent
                 if (State.VALIDATE == state)
                 {
                     Configuration.validateMtuLength(senderMtuLength);
+                    LogBufferDescriptor.checkTermLength(termBufferLength);
 
                     subscriptionParams = SubscriptionParams.getSubscriptionParams(
                         channelEndpoint.subscriptionUdpChannel().channelUri(), ctx, termBufferLength);

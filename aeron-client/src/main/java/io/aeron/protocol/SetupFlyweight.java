@@ -15,17 +15,21 @@
  */
 package io.aeron.protocol;
 
+import io.aeron.logbuffer.FrameDescriptor;
+import org.agrona.BitUtil;
 import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.ByteBuffer;
 
+import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MAX_LENGTH;
+import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MIN_LENGTH;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
 /**
  * HeaderFlyweight for Setup Message Frames.
  * <p>
  * <a target="_blank" href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#stream-setup">
- *     Stream Setup</a> wiki page.
+ * Stream Setup</a> wiki page.
  */
 public class SetupFlyweight extends HeaderFlyweight
 {
@@ -83,6 +87,8 @@ public class SetupFlyweight extends HeaderFlyweight
      * Offset in the frame at which the multicast TTL (Time To Live) field begins.
      */
     private static final int TTL_FIELD_OFFSET = 36;
+
+    static final int MAX_UDP_PAYLOAD_LENGTH = 65504;
 
     /**
      * Default constructor which can later be used to wrap a frame.
@@ -293,6 +299,22 @@ public class SetupFlyweight extends HeaderFlyweight
         putInt(TTL_FIELD_OFFSET, ttl, LITTLE_ENDIAN);
 
         return this;
+    }
+
+    /**
+     * Check if the setup frame is properly formed.
+     *
+     * @return {@code true} if valid.
+     */
+    public boolean isValid()
+    {
+        final int termOffset = termOffset();
+        final int termLength = termLength();
+        final int mtuLength = mtuLength();
+        return termLength >= TERM_MIN_LENGTH && termLength <= TERM_MAX_LENGTH && BitUtil.isPowerOfTwo(termLength) &&
+            termOffset >= 0 && termOffset < termLength && FrameDescriptor.isFrameAligned(termOffset) &&
+            mtuLength >= DataHeaderFlyweight.HEADER_LENGTH && mtuLength <= MAX_UDP_PAYLOAD_LENGTH &&
+            FrameDescriptor.isFrameAligned(mtuLength);
     }
 
     /**

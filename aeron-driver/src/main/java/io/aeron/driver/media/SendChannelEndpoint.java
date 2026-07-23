@@ -25,6 +25,7 @@ import io.aeron.driver.NetworkPublication;
 import io.aeron.driver.Sender;
 import io.aeron.driver.status.MdcDestinations;
 import io.aeron.exceptions.ControlProtocolException;
+import io.aeron.logbuffer.LogBufferDescriptor;
 import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.ErrorFlyweight;
 import io.aeron.protocol.NakFlyweight;
@@ -390,10 +391,16 @@ public class SendChannelEndpoint extends UdpChannelTransport
     {
         final int sessionId = msg.sessionId();
         final int streamId = msg.streamId();
+        final NetworkPublication publication = publicationBySessionAndStreamId.get(compoundKey(sessionId, streamId));
+
+        if (!msg.isValid(null != publication ? publication.termBufferLength() : LogBufferDescriptor.TERM_MAX_LENGTH))
+        {
+            invalidPackets.increment();
+            return;
+        }
 
         statusMessagesReceived.incrementRelease();
 
-        final NetworkPublication publication = publicationBySessionAndStreamId.get(compoundKey(sessionId, streamId));
         if (SEND_SETUP_FLAG != (msg.flags() & SEND_SETUP_FLAG) &&
             null != publication && !publication.isValidStatusMessage(msg))
         {
@@ -436,15 +443,19 @@ public class SendChannelEndpoint extends UdpChannelTransport
         final InetSocketAddress srcAddress,
         final DriverConductorProxy conductorProxy)
     {
-        final int sessionId = msg.sessionId();
-        final int streamId = msg.streamId();
+        if (!msg.isValid())
+        {
+            invalidPackets.increment();
+            return;
+        }
 
         errorMessagesReceived.incrementRelease();
 
         final long destinationRegistrationId = (null != multiSndDestination) ?
             multiSndDestination.findRegistrationId(msg, srcAddress) : Aeron.NULL_VALUE;
 
-        final NetworkPublication publication = publicationBySessionAndStreamId.get(compoundKey(sessionId, streamId));
+        final NetworkPublication publication =
+            publicationBySessionAndStreamId.get(compoundKey(msg.sessionId(), msg.streamId()));
         if (null != publication)
         {
             publication.onError(msg, srcAddress, destinationRegistrationId, conductorProxy);
@@ -470,8 +481,15 @@ public class SendChannelEndpoint extends UdpChannelTransport
 
         if (null != publication)
         {
-            publication.onNak(msg.termId(), msg.termOffset(), msg.length());
-            nakMessagesReceived.incrementRelease();
+            if (msg.isValid(publication.termBufferLength()))
+            {
+                nakMessagesReceived.incrementRelease();
+                publication.onNak(msg);
+            }
+            else
+            {
+                invalidPackets.increment();
+            }
         }
     }
 

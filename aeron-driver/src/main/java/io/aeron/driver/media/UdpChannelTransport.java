@@ -19,7 +19,15 @@ import io.aeron.driver.MediaDriver;
 import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.exceptions.AeronEvent;
 import io.aeron.exceptions.AeronException;
-import io.aeron.protocol.HeaderFlyweight;
+import io.aeron.logbuffer.FrameDescriptor;
+import io.aeron.protocol.DataHeaderFlyweight;
+import io.aeron.protocol.ErrorFlyweight;
+import io.aeron.protocol.NakFlyweight;
+import io.aeron.protocol.ResolutionEntryFlyweight;
+import io.aeron.protocol.ResponseSetupFlyweight;
+import io.aeron.protocol.RttMeasurementFlyweight;
+import io.aeron.protocol.SetupFlyweight;
+import io.aeron.protocol.StatusMessageFlyweight;
 import io.aeron.status.ChannelEndpointStatus;
 import org.agrona.CloseHelper;
 import org.agrona.ErrorHandler;
@@ -34,7 +42,17 @@ import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 
-import static io.aeron.logbuffer.FrameDescriptor.frameVersion;
+import static io.aeron.protocol.HeaderFlyweight.CURRENT_VERSION;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_DATA;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_ERR;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_NAK;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_PAD;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_RES;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_RSP_SETUP;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_RTTM;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_SETUP;
+import static io.aeron.protocol.HeaderFlyweight.HDR_TYPE_SM;
+import static io.aeron.protocol.HeaderFlyweight.MIN_HEADER_LENGTH;
 import static java.net.StandardSocketOptions.SO_RCVBUF;
 import static java.net.StandardSocketOptions.SO_SNDBUF;
 
@@ -75,7 +93,7 @@ public abstract class UdpChannelTransport implements AutoCloseable
 
     private InetSocketAddress bindAddress;
     private final InetSocketAddress endPointAddress;
-    private final AtomicCounter invalidPackets;
+    final AtomicCounter invalidPackets;
     private final PortManager portManager;
 
     private int multicastTtl = 0;
@@ -345,10 +363,38 @@ public abstract class UdpChannelTransport implements AutoCloseable
      */
     public boolean isValidFrame(final UnsafeBuffer buffer, final int length)
     {
-        if (length >= HeaderFlyweight.MIN_HEADER_LENGTH &&
-            frameVersion(buffer, 0) == HeaderFlyweight.CURRENT_VERSION)
+        final int frameLength;
+        if (length > MIN_HEADER_LENGTH &&
+            (frameLength = FrameDescriptor.frameLength(buffer, 0)) >= 0 &&
+            CURRENT_VERSION == FrameDescriptor.frameVersion(buffer, 0))
         {
-            return true;
+            final int frameType = FrameDescriptor.frameType(buffer, 0);
+            if (HDR_TYPE_DATA == frameType || HDR_TYPE_PAD == frameType)
+            {
+                if (length >= DataHeaderFlyweight.HEADER_LENGTH && FrameDescriptor.isFrameAligned(length))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                final boolean valid = switch (frameType)
+                {
+                    case HDR_TYPE_NAK -> length >= NakFlyweight.HEADER_LENGTH && frameLength <= length;
+                    case HDR_TYPE_SM -> length >= StatusMessageFlyweight.HEADER_LENGTH && frameLength <= length;
+                    case HDR_TYPE_ERR -> length >= ErrorFlyweight.HEADER_LENGTH && frameLength <= length;
+                    case HDR_TYPE_SETUP -> length >= SetupFlyweight.HEADER_LENGTH && frameLength <= length;
+                    case HDR_TYPE_RTTM -> length >= RttMeasurementFlyweight.HEADER_LENGTH && frameLength <= length;
+                    case HDR_TYPE_RES -> length >= MIN_HEADER_LENGTH + ResolutionEntryFlyweight.MIN_IPV4_FRAME_LENGTH &&
+                        frameLength <= length;
+                    case HDR_TYPE_RSP_SETUP -> length >= ResponseSetupFlyweight.HEADER_LENGTH && frameLength <= length;
+                    default -> false;
+                };
+                if (valid)
+                {
+                    return true;
+                }
+            }
         }
 
         invalidPackets.increment();
