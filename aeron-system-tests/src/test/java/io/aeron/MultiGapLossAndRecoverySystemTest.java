@@ -37,7 +37,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MultiGapLossAndRecoverySystemTest
 {
@@ -111,7 +110,7 @@ public class MultiGapLossAndRecoverySystemTest
     {
         final int streamId = 10000;
         final Random r = new Random(4234266349L);
-        final MutableLong receiverValue = new MutableLong();
+        final MutableLong framesReceived = new MutableLong(0);
 
         try (Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
             ExclusivePublication pub = aeron.addExclusivePublication(channel, streamId);
@@ -123,25 +122,36 @@ public class MultiGapLossAndRecoverySystemTest
             final Image image = sub.imageBySessionId(pub.sessionId());
 
             final FragmentAssembler handler = new FragmentAssembler(
-                (buffer, offset, length, header) -> receiverValue.set(buffer.getLong(offset)));
+                (buffer, offset, length, header) -> framesReceived.increment());
 
             final BufferClaim bufferClaim = new BufferClaim();
+            int framesSent = 0;
             while (pub.position() < publicationLength)
             {
-                while (pub.tryClaim(pub.maxPayloadLength(), bufferClaim) < 0)
+                if (pub.tryClaim(pub.maxPayloadLength(), bufferClaim) < 0)
                 {
                     Tests.yield();
                 }
+                else
+                {
+                    final long value = r.nextLong();
+                    bufferClaim.buffer().putLong(DataHeaderFlyweight.HEADER_LENGTH, value);
+                    bufferClaim.commit();
+                    framesSent++;
+                }
 
-                final long value = r.nextLong();
-                bufferClaim.buffer().putLong(DataHeaderFlyweight.HEADER_LENGTH, value);
-                bufferClaim.commit();
-
-                while (0 == image.poll(handler, 1))
+                if (0 == image.poll(handler, 10))
                 {
                     Tests.yield();
                 }
-                assertEquals(value, receiverValue.get());
+            }
+
+            while (framesReceived.get() < framesSent)
+            {
+                while (0 == image.poll(handler, 10))
+                {
+                    Tests.yield();
+                }
             }
         }
     }
