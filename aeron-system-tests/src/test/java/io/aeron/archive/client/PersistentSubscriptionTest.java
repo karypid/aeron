@@ -84,6 +84,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -1796,6 +1797,7 @@ abstract class PersistentSubscriptionTest
         final PerSecondStats publisherMessagesPerSecond = new PerSecondStats(t0, maxSeconds);
         final PerSecondStats publisherBpePerSecond = new PerSecondStats(t0, maxSeconds);
         final PerSecondStats controlMessagesPerSecond = new PerSecondStats(t0, maxSeconds);
+        final CountDownLatch threadStartLatch = new CountDownLatch(2);
 
         final Thread control = new Thread(
             () ->
@@ -1806,6 +1808,8 @@ abstract class PersistentSubscriptionTest
                         controlMessagesPerSecond.record(System.nanoTime());
                         simulateWork(maxProcessingTime);
                     });
+
+                threadStartLatch.countDown();
                 while (!Thread.currentThread().isInterrupted())
                 {
                     controlSubscription.poll(handler, 10);
@@ -1822,6 +1826,7 @@ abstract class PersistentSubscriptionTest
                 final UnsafeBuffer buffer = new UnsafeBuffer(new byte[2048]);
                 long messageId = 0;
                 long nextMessageAt = System.nanoTime() + exponentialArrivalDelay(ratePerSecond);
+                threadStartLatch.countDown();
                 while (!Thread.currentThread().isInterrupted())
                 {
                     final long now = System.nanoTime();
@@ -1848,7 +1853,7 @@ abstract class PersistentSubscriptionTest
         publisher.start();
         addCloseable(() -> interruptAndJoin(publisher));
 
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
+        threadStartLatch.await();
 
         try (PersistentSubscription persistentSubscription = PersistentSubscription.create(persistentSubscriptionCtx))
         {
@@ -3058,6 +3063,7 @@ abstract class PersistentSubscriptionTest
 
     @Test
     @InterruptAfter(30)
+    @SlowTest
     void shouldRecoverFromLiveChannelNetworkProblems() throws Exception
     {
         shouldRecoverFromNetworkProblems(NetworkFlow.LIVE);
@@ -3181,6 +3187,7 @@ abstract class PersistentSubscriptionTest
         final StreamIdLossGenerator lossGenerator = new StreamIdLossGenerator();
         final String aeronDir2 = CommonContext.generateRandomDirName();
         final MediaDriver.Context driver2Ctx = driverCtxTpl.clone().aeronDirectoryName(aeronDir2)
+            .imageLivenessTimeoutNs(TimeUnit.MILLISECONDS.toNanos(500))
             .receiveChannelEndpointSupplier(receiveChannelEndpointSupplier(lossGenerator));
         addCloseable(TestMediaDriver.launch(driver2Ctx, systemTestWatcher));
         systemTestWatcher.dataCollector().add(driver2Ctx.aeronDirectory());
@@ -3197,6 +3204,7 @@ abstract class PersistentSubscriptionTest
         final int ratePerSecond = 50;
         final long maxProcessingTime = 1_000_000_000 / ratePerSecond / 8;
 
+        final CountDownLatch threadStartLatch = new CountDownLatch(1);
         final Thread publisher = new Thread(
             () ->
             {
@@ -3204,6 +3212,8 @@ abstract class PersistentSubscriptionTest
                 final UnsafeBuffer buffer = new UnsafeBuffer(new byte[2048]);
                 long messageId = 0;
                 long nextMessageAt = System.nanoTime() + exponentialArrivalDelay(ratePerSecond);
+
+                threadStartLatch.countDown();
                 while (!Thread.currentThread().isInterrupted())
                 {
                     final long now = System.nanoTime();
@@ -3225,9 +3235,8 @@ abstract class PersistentSubscriptionTest
         publisher.start();
         addCloseable(() -> interruptAndJoin(publisher));
 
+        threadStartLatch.await();
         final long startTime = System.nanoTime();
-
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(1));
 
         try (PersistentSubscription persistentSubscription = PersistentSubscription.create(persistentSubscriptionCtx))
         {
