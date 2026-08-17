@@ -157,7 +157,10 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    aeron_thread_set_name(driver->runners[AERON_AGENT_RUNNER_CONDUCTOR].role_name);
+    if (AERON_THREAD_NAMING_NEW == context->thread_naming)
+    {
+        aeron_thread_set_name(driver->runners[AERON_AGENT_RUNNER_CONDUCTOR].role_name);
+    }
 
     while (is_running())
     {
