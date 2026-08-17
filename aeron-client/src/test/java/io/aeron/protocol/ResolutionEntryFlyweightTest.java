@@ -30,6 +30,7 @@ import static io.aeron.protocol.ResolutionEntryFlyweight.RES_TYPE_NAME_TO_IP6_MD
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -135,5 +136,27 @@ class ResolutionEntryFlyweightTest
         final byte[] actualBytes = new byte[nameBytes.length];
         entry.getName(actualBytes);
         assertArrayEquals(nameBytes, actualBytes);
+    }
+
+    @Test
+    void shouldFormatEntry()
+    {
+        final String name = "test name";
+        final ResolutionEntryFlyweight entry =
+            new ResolutionEntryFlyweight(new UnsafeBuffer(new byte[MIN_IPV6_FRAME_LENGTH + name.length()]));
+        entry
+            .resType(RES_TYPE_NAME_TO_IP6_MD)
+            .putName(name.getBytes(US_ASCII));
+        final byte[] address = {
+            (byte)0xfe, (byte)0x80, (byte)0x00, (byte)0x00,
+            (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
+            (byte)0x54, (byte)0xd3, (byte)0x41, (byte)0x22,
+            (byte)0xe7, (byte)0x38, (byte)0xa8, (byte)0x62
+        };
+        entry.putAddress(address);
+
+        final StringBuilder sb = new StringBuilder();
+        entry.appendAddress(sb);
+        assertEquals("[fe80::54d3:4122:e738:a862]", sb.toString());
     }
 }

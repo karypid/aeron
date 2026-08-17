@@ -37,7 +37,6 @@ import static io.aeron.logging.CborUtils.IPV6_TAG;
 import static java.time.Instant.ofEpochMilli;
 import static java.time.ZonedDateTime.ofInstant;
 import static org.agrona.PrintBufferUtil.appendPrettyHexDump;
-import static org.agrona.PrintBufferUtil.byteToHexStringPadded;
 import static org.agrona.SystemUtil.parseSize;
 
 /**
@@ -190,7 +189,7 @@ public class PrintLoggerEventCallback implements LoggerEventCallback
         }
         else if (IPV6_TAG == tag && 16 == value.capacity())
         {
-            appendIpV6Address(sb, value);
+            LogUtil.appendIpV6Address(sb, value, 0);
         }
         else if (binaryRenderers.containsKey(msgTypeId))
         {
@@ -239,75 +238,6 @@ public class PrintLoggerEventCallback implements LoggerEventCallback
                 "Disabling log rotation, invalid '" + EVENT_LOG_FILE_MAX_LENGTH + "' - " + ex.getMessage());
             return Long.MAX_VALUE;
         }
-    }
-
-    private static int ipV6Group(final DirectBuffer buffer, final int index)
-    {
-        final int byteOffset = (index * 2);
-        return ((buffer.getByte(byteOffset) << 8) & 0xFF00) | (buffer.getByte(byteOffset + 1) & 0xFF);
-    }
-
-    private static void appendIpV6Address(final StringBuilder builder, final DirectBuffer buffer)
-    {
-        int bestStart = -1;
-        int bestLength = 0;
-        int runStart = -1;
-        int runLength = 0;
-
-        for (int i = 0; i < 8; i++)
-        {
-            if (0 == ipV6Group(buffer, i))
-            {
-                if (-1 == runStart)
-                {
-                    runStart = i;
-                }
-                runLength++;
-            }
-            else
-            {
-                if (runLength > bestLength)
-                {
-                    bestStart = runStart;
-                    bestLength = runLength;
-                }
-                runStart = -1;
-                runLength = 0;
-            }
-        }
-
-        if (runLength > bestLength)
-        {
-            bestStart = runStart;
-            bestLength = runLength;
-        }
-
-        if (bestLength < 2)
-        {
-            bestStart = -1;
-        }
-
-        builder.append('[');
-        for (int i = 0; i < 8;)
-        {
-            if (i == bestStart)
-            {
-                builder.append("::");
-                i += bestLength;
-                continue;
-            }
-
-            builder.append(byteToHexStringPadded(0xFF & buffer.getByte(i * 2)));
-            builder.append(byteToHexStringPadded(0xFF & buffer.getByte((i * 2) + 1)));
-
-            i++;
-
-            if (i < 8 && i != bestStart)
-            {
-                builder.append(':');
-            }
-        }
-        builder.append(']');
     }
 
     static boolean endsWithNewLine(final StringBuilder sb)

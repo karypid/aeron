@@ -15,12 +15,12 @@
  */
 package io.aeron.protocol;
 
+import io.aeron.logging.LogUtil;
 import org.agrona.LangUtil;
 import org.agrona.concurrent.UnsafeBuffer;
 
 import java.nio.ByteBuffer;
 
-import static java.lang.Integer.toHexString;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
 import static org.agrona.BitUtil.SIZE_OF_SHORT;
@@ -320,23 +320,7 @@ public class ResolutionEntryFlyweight extends HeaderFlyweight
 
                 case RES_TYPE_NAME_TO_IP6_MD:
                 {
-                    final int i = ADDRESS_FIELD_OFFSET;
-                    appendable
-                        .append(toHexString(((getByte(i) << 8) & 0xFF00) | getByte(i + 1) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 2) << 8) & 0xFF00) | getByte(i + 3) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 4) << 8) & 0xFF00) | getByte(i + 5) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 6) << 8) & 0xFF00) | getByte(i + 7) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 8) << 8) & 0xFF00) | getByte(i + 9) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 10) << 8) & 0xFF00) | getByte(i + 11) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 12) << 8) & 0xFF00) | getByte(i + 13) & 0xFF))
-                        .append(':')
-                        .append(toHexString(((getByte(i + 14) << 8) & 0xFF00) | getByte(i + 15) & 0xFF));
+                    LogUtil.appendIpV6Address(appendable, this, ADDRESS_FIELD_OFFSET);
                     break;
                 }
 

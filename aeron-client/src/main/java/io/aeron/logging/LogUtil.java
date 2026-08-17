@@ -16,6 +16,11 @@
 package io.aeron.logging;
 
 import org.agrona.AsciiEncoding;
+import org.agrona.DirectBuffer;
+
+import java.io.IOException;
+
+import static org.agrona.PrintBufferUtil.byteToHexStringPadded;
 
 /**
  * Utility methods for loggers.
@@ -71,5 +76,109 @@ public final class LogUtil
         appendTimestamp(sb, timestampNs);
         sb.setLength(sb.length() - 1);
         return sb.toString();
+    }
+
+    /**
+     * Append an IPv6 address as a string.
+     *
+     * @param builder   to append to.
+     * @param buffer    to read from.
+     * @param offset    to read from.
+     */
+    public static void appendIpV6Address(final Appendable builder, final DirectBuffer buffer, final int offset)
+    {
+        int bestStart = -1;
+        int bestLength = 0;
+        int runStart = -1;
+        int runLength = 0;
+
+        for (int i = 0; i < 8; i++)
+        {
+            if (0 == ipV6Group(buffer, i, offset))
+            {
+                if (-1 == runStart)
+                {
+                    runStart = i;
+                }
+                runLength++;
+            }
+            else
+            {
+                if (runLength > bestLength)
+                {
+                    bestStart = runStart;
+                    bestLength = runLength;
+                }
+                runStart = -1;
+                runLength = 0;
+            }
+        }
+
+        if (runLength > bestLength)
+        {
+            bestStart = runStart;
+            bestLength = runLength;
+        }
+
+        if (bestLength < 2)
+        {
+            bestStart = -1;
+        }
+
+        try
+        {
+            builder.append('[');
+            for (int i = 0; i < 8;)
+            {
+                if (i == bestStart)
+                {
+                    builder.append("::");
+                    i += bestLength;
+                    continue;
+                }
+
+                builder.append(byteToHexStringPadded(0xFF & buffer.getByte((i * 2 + offset))));
+                builder.append(byteToHexStringPadded(0xFF & buffer.getByte((i * 2) + 1 + offset)));
+
+                i++;
+
+                if (i < 8 && i != bestStart)
+                {
+                    builder.append(':');
+                }
+            }
+            builder.append(']');
+        }
+        catch (final IOException ex)
+        {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private static int ipV6Group(final DirectBuffer buffer, final int index, final int offset)
+    {
+        final int byteOffset = (index * 2) + offset;
+        return ((buffer.getByte(byteOffset) << 8) & 0xFF00) | (buffer.getByte(byteOffset + 1) & 0xFF);
+    }
+
+    /**
+     * Append a simple hex string to a {@link StringBuilder}.
+     *
+     * @param sb        to write the string to.
+     * @param buffer    to read the data from.
+     * @param offset    to read the data from.
+     * @param length    to read the data from.
+     */
+    public static void appendHexString(
+        final StringBuilder sb,
+        final DirectBuffer buffer,
+        final int offset,
+        final int length)
+    {
+        for (int i = 0; i < length; i++)
+        {
+            final int index = offset + i;
+            sb.append(byteToHexStringPadded(buffer.getByte(index)));
+        }
     }
 }
