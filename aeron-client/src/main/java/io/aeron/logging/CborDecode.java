@@ -15,6 +15,7 @@
  */
 package io.aeron.logging;
 
+import io.aeron.api.InternalApi;
 import org.agrona.AsciiSequenceView;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -46,7 +47,10 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
 
 /**
  * Top level handler for CBOR messages from the logger.
+ * <p>
+ * This is not a general purpose CBOR decoder, instead it is specific to the usage for logging internnaly to Aeron.
  */
+@InternalApi
 public class CborDecode implements MessageHandler
 {
     private final List<? extends LoggerEventCallback> loggers;

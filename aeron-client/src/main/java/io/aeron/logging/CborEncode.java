@@ -15,6 +15,7 @@
  */
 package io.aeron.logging;
 
+import io.aeron.api.InternalApi;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
@@ -45,7 +46,10 @@ import static org.agrona.BitUtil.SIZE_OF_SHORT;
 
 /**
  * Utility class for CBOR encoding.
+ * <p>
+ * This is not a general purpose CBOR decoder, instead it is specific to the usage for logging internnaly to Aeron.
  */
+@InternalApi
 public final class CborEncode
 {
     private static final String TRUNC_END = "...";

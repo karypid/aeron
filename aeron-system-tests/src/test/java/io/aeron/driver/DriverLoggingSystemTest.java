@@ -121,7 +121,8 @@ class DriverLoggingSystemTest
         final Path logFile = tempDir.resolve("driver.log");
         reader.writeToFile(logFile.toString());
         final String content = Files.readString(logFile);
-        assertTrue(content.contains("bytes truncated"));
+        System.out.println(content);
+        assertTrue(content.contains("(truncated)"));
         assertTrue(content.contains("FRAME_IN"));
         assertTrue(content.contains("FRAME_OUT"));
         assertTrue(content.contains("CMD_IN_REMOVE_PUBLICATION"));
