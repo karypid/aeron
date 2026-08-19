@@ -16,6 +16,7 @@
 package io.aeron.archive;
 
 import io.aeron.Aeron;
+import io.aeron.ChannelUri;
 import io.aeron.ChannelUriStringBuilder;
 import io.aeron.CommonContext;
 import io.aeron.ExclusivePublication;
@@ -24,7 +25,7 @@ import io.aeron.Image;
 import io.aeron.Publication;
 import io.aeron.Subscription;
 import io.aeron.archive.client.AeronArchive;
-import io.aeron.archive.client.RecordingSignalConsumer;
+import io.aeron.archive.client.ArchiveException;
 import io.aeron.archive.status.RecordingPos;
 import io.aeron.driver.Configuration;
 import io.aeron.driver.MediaDriver;
@@ -42,9 +43,9 @@ import io.aeron.test.Tests;
 import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.CloseHelper;
 import org.agrona.ExpandableArrayBuffer;
+import org.agrona.LangUtil;
 import org.agrona.collections.MutableInteger;
 import org.agrona.concurrent.status.CountersReader;
-import org.hamcrest.Matcher;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,22 +54,30 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InOrder;
-import org.mockito.Mockito;
 
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static io.aeron.Aeron.NULL_VALUE;
-import static io.aeron.archive.codecs.RecordingSignal.*;
+import static io.aeron.archive.ArchiveSystemTests.FRAGMENT_LIMIT;
+import static io.aeron.archive.ArchiveSystemTests.TERM_LENGTH;
+import static io.aeron.archive.ArchiveSystemTests.awaitSignal;
+import static io.aeron.archive.ArchiveSystemTests.injectRecordingSignalConsumer;
+import static io.aeron.archive.client.ArchiveException.ACTIVE_RECORDING;
+import static io.aeron.archive.codecs.RecordingSignal.EXTEND;
+import static io.aeron.archive.codecs.RecordingSignal.START;
+import static io.aeron.archive.codecs.RecordingSignal.STOP;
 import static io.aeron.archive.codecs.SourceLocation.LOCAL;
 import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MIN_LENGTH;
 import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith({ EventLogExtension.class, InterruptingTestCallback.class })
 class ExtendRecordingTest
@@ -82,7 +91,7 @@ class ExtendRecordingTest
         .media("udp")
         .endpoint("localhost:3333")
         .mtu(MTU_LENGTH)
-        .termLength(ArchiveSystemTests.TERM_LENGTH)
+        .termLength(TERM_LENGTH)
         .alias(MY_ALIAS)
         .build();
 
@@ -102,7 +111,7 @@ class ExtendRecordingTest
     private Aeron aeron;
     private AeronArchive aeronArchive;
 
-    private final RecordingSignalConsumer mockRecordingSignalConsumer = mock(RecordingSignalConsumer.class);
+    private TestRecordingSignalConsumer recordingSignalConsumer;
 
     @RegisterExtension
     final SystemTestWatcher systemTestWatcher = new SystemTestWatcher();
@@ -126,22 +135,20 @@ class ExtendRecordingTest
             .archiveDir(tempDir.resolve("archive").toFile())
             .fileSyncLevel(0)
             .segmentFileLength(TERM_MIN_LENGTH)
-            .threadingMode(ArchiveThreadingMode.SHARED)
-            .deleteArchiveOnStart(true);
+            .threadingMode(ArchiveThreadingMode.SHARED);
 
         driver = TestMediaDriver.launch(driverCtx, systemTestWatcher);
         systemTestWatcher.dataCollector().add(driverCtx.aeronDirectory());
-        archive = Archive.launch(archiveCtx);
+        archive = Archive.launch(archiveCtx.clone());
         systemTestWatcher.dataCollector().add(archiveCtx.archiveDir());
 
         aeron = Aeron.connect(
             new Aeron.Context()
                 .aeronDirectoryName(aeronDirectoryName));
 
-        aeronArchive = AeronArchive.connect(
-            TestContexts.localhostAeronArchive()
-                .recordingSignalConsumer(mockRecordingSignalConsumer)
-                .aeron(aeron));
+        aeronArchive = AeronArchive.connect(TestContexts.localhostAeronArchive().aeron(aeron).errorHandler(null));
+
+        recordingSignalConsumer = injectRecordingSignalConsumer(aeronArchive);
     }
 
     @AfterEach
@@ -176,7 +183,7 @@ class ExtendRecordingTest
         {
 
             subscriptionIdOne = aeronArchive.startRecording(RECORDED_CHANNEL, RECORDED_STREAM_ID, LOCAL);
-            pollForRecordingSignal(aeronArchive);
+            awaitSignal(aeronArchive, recordingSignalConsumer, START);
 
             try
             {
@@ -194,8 +201,10 @@ class ExtendRecordingTest
             }
             finally
             {
+                final long recId = recordingSignalConsumer.recordingId;
+                recordingSignalConsumer.reset();
                 aeronArchive.stopRecording(subscriptionIdOne);
-                pollForRecordingSignal(aeronArchive);
+                awaitSignal(aeronArchive, recordingSignalConsumer, recId, STOP);
             }
         }
 
@@ -216,8 +225,9 @@ class ExtendRecordingTest
         try (Subscription subscription = Tests.reAddSubscription(aeron, EXTEND_CHANNEL, RECORDED_STREAM_ID);
             Publication publication = publicationFactory.create(aeron, publicationExtendChannel, RECORDED_STREAM_ID))
         {
+            recordingSignalConsumer.reset();
             subscriptionIdTwo = aeronArchive.extendRecording(recordingId, EXTEND_CHANNEL, RECORDED_STREAM_ID, LOCAL);
-            pollForRecordingSignal(aeronArchive);
+            awaitSignal(aeronArchive, recordingSignalConsumer, recordingId, EXTEND);
 
             try
             {
@@ -235,21 +245,11 @@ class ExtendRecordingTest
             finally
             {
                 aeronArchive.stopRecording(subscriptionIdTwo);
-                pollForRecordingSignal(aeronArchive);
+                awaitSignal(aeronArchive, recordingSignalConsumer, recordingId, STOP);
             }
         }
 
         replay(messageCount, stopTwo, recordingId);
-
-        final InOrder inOrder = Mockito.inOrder(mockRecordingSignalConsumer);
-        inOrder.verify(mockRecordingSignalConsumer).onSignal(
-            eq(controlSessionId), anyLong(), eq(recordingId), eq(subscriptionIdOne), eq(0L), eq(START));
-        inOrder.verify(mockRecordingSignalConsumer).onSignal(
-            eq(controlSessionId), anyLong(), eq(recordingId), eq(subscriptionIdOne), eq(stopOne), eq(STOP));
-        inOrder.verify(mockRecordingSignalConsumer).onSignal(
-            eq(controlSessionId), anyLong(), eq(recordingId), eq(subscriptionIdTwo), eq(stopOne), eq(EXTEND));
-        inOrder.verify(mockRecordingSignalConsumer).onSignal(
-            eq(controlSessionId), anyLong(), eq(recordingId), eq(subscriptionIdTwo), eq(stopTwo), eq(STOP));
     }
 
     @Test
@@ -365,8 +365,116 @@ class ExtendRecordingTest
         }
     }
 
-    private void assertThat(final long stopPosition, final Matcher<Integer> integerMatcher)
+    @Test
+    void shouldDisallowConcurrentExtendRecordingOperations() throws InterruptedException
     {
+        final String channel = "aeron:ipc?term-length=64k|mtu=1408|init-term-id=5|term-id=15|term-offset=1024";
+        final int streamId = 555;
+        final long recordingId;
+        try (ExclusivePublication publication = aeronArchive.addRecordedExclusivePublication(channel, streamId))
+        {
+            final CountersReader counters = aeron.countersReader();
+            final int counterId =
+                Tests.awaitRecordingCounterId(counters, publication.sessionId(), aeronArchive.archiveId());
+            recordingId = RecordingPos.getRecordingId(counters, counterId);
+
+            recordingSignalConsumer.reset();
+            assertTrue(aeronArchive.tryStopRecordingByIdentity(recordingId));
+            awaitSignal(aeronArchive, recordingSignalConsumer, recordingId, STOP);
+        }
+
+        final int threads = 3;
+        final CountDownLatch start = new CountDownLatch(threads + 1);
+        final CountDownLatch end = new CountDownLatch(threads);
+        final AtomicInteger success = new AtomicInteger();
+        final AtomicInteger error = new AtomicInteger();
+        final AtomicReference<Throwable> exception = new AtomicReference<>();
+        final long[] recordingSubscriptions = new long[threads];
+        Arrays.fill(recordingSubscriptions, NULL_VALUE);
+
+        for (int i = 0; i < threads; i++)
+        {
+            final int index = i;
+            final Thread thread = new Thread(() ->
+            {
+                try (ExclusivePublication publication = aeron.addExclusivePublication(channel, streamId);
+                    AeronArchive localArchive = AeronArchive.connect(
+                        TestContexts.localhostAeronArchive().aeron(aeron).errorHandler(null)))
+                {
+                    start.countDown();
+                    start.await();
+
+                    recordingSubscriptions[index] = localArchive.extendRecording(
+                        recordingId, ChannelUri.addSessionId(channel, publication.sessionId()), streamId, LOCAL);
+                    success.incrementAndGet();
+
+                    while (error.get() != threads - 1)
+                    {
+                        try
+                        {
+                            localArchive.checkForErrorResponse();
+                            Tests.sleep(1);
+                        }
+                        catch (final ArchiveException ex)
+                        {
+                            assertEquals(ACTIVE_RECORDING, ex.errorCode());
+                            error.incrementAndGet();
+                        }
+                    }
+                }
+                catch (final Exception ex)
+                {
+                    if (null != exception.get() || !exception.compareAndSet(null, ex))
+                    {
+                        exception.get().addSuppressed(ex);
+                    }
+                    error.incrementAndGet();
+                }
+                finally
+                {
+                    end.countDown();
+                }
+            });
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        start.countDown();
+        start.await();
+
+        end.await();
+
+        if (null != exception.get())
+        {
+            LangUtil.rethrowUnchecked(exception.get());
+        }
+        assertEquals(threads, success.get());
+        assertEquals(threads - 1, error.get());
+        for (final long registrationId : recordingSubscriptions)
+        {
+            assertNotEquals(NULL_VALUE, registrationId);
+        }
+    }
+
+    @Test
+    void shouldRejectExtendRecordingAttemptIfRecordingSessionIsPresent()
+    {
+        final String channel = "aeron:ipc?term-length=64k";
+        final int streamId = 777;
+        try (ExclusivePublication publication = aeronArchive.addRecordedExclusivePublication(channel, streamId))
+        {
+            final CountersReader counters = aeron.countersReader();
+            final int counterId =
+                Tests.awaitRecordingCounterId(counters, publication.sessionId(), aeronArchive.archiveId());
+            final long recordingId = RecordingPos.getRecordingId(counters, counterId);
+
+            final ChannelUri uri = ChannelUri.parse(channel);
+            uri.initialPosition(publication.position(), publication.initialTermId(), publication.termBufferLength());
+            final ArchiveException exception = assertThrowsExactly(
+                ArchiveException.class,
+                () -> aeronArchive.extendRecording(recordingId, uri.toString(), streamId, LOCAL));
+            assertEquals(ACTIVE_RECORDING, exception.errorCode());
+        }
     }
 
     private void replay(final int messageCount, final long secondStopPosition, final long recordingId)
@@ -414,20 +522,12 @@ class ExtendRecordingTest
 
         while (received.value < (startIndex + count))
         {
-            if (0 == subscription.poll(fragmentHandler, ArchiveSystemTests.FRAGMENT_LIMIT))
+            if (0 == subscription.poll(fragmentHandler, FRAGMENT_LIMIT))
             {
                 Tests.yield();
             }
         }
 
         assertEquals(startIndex + count, received.get());
-    }
-
-    private void pollForRecordingSignal(final AeronArchive aeronArchive)
-    {
-        while (0 == aeronArchive.pollForRecordingSignals())
-        {
-            Tests.yield();
-        }
     }
 }
