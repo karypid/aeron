@@ -15,10 +15,55 @@
  */
 package io.aeron.archive;
 
-import io.aeron.*;
+import io.aeron.Aeron;
+import io.aeron.ChannelUri;
+import io.aeron.Counter;
+import io.aeron.FragmentAssembler;
+import io.aeron.Image;
+import io.aeron.Subscription;
 import io.aeron.archive.client.AeronArchive;
 import io.aeron.archive.client.ArchiveException;
-import io.aeron.archive.codecs.*;
+import io.aeron.archive.codecs.ArchiveIdRequestDecoder;
+import io.aeron.archive.codecs.AttachSegmentsRequestDecoder;
+import io.aeron.archive.codecs.AuthConnectRequestDecoder;
+import io.aeron.archive.codecs.BooleanType;
+import io.aeron.archive.codecs.BoundedReplayRequestDecoder;
+import io.aeron.archive.codecs.ChallengeResponseDecoder;
+import io.aeron.archive.codecs.CloseSessionRequestDecoder;
+import io.aeron.archive.codecs.ConnectRequestDecoder;
+import io.aeron.archive.codecs.DeleteDetachedSegmentsRequestDecoder;
+import io.aeron.archive.codecs.DetachSegmentsRequestDecoder;
+import io.aeron.archive.codecs.ExtendRecordingRequest2Decoder;
+import io.aeron.archive.codecs.ExtendRecordingRequestDecoder;
+import io.aeron.archive.codecs.FindLastMatchingRecordingRequestDecoder;
+import io.aeron.archive.codecs.KeepAliveRequestDecoder;
+import io.aeron.archive.codecs.ListRecordingRequestDecoder;
+import io.aeron.archive.codecs.ListRecordingSubscriptionsRequestDecoder;
+import io.aeron.archive.codecs.ListRecordingsForUriRequestDecoder;
+import io.aeron.archive.codecs.ListRecordingsRequestDecoder;
+import io.aeron.archive.codecs.MaxRecordedPositionRequestDecoder;
+import io.aeron.archive.codecs.MessageHeaderDecoder;
+import io.aeron.archive.codecs.MigrateSegmentsRequestDecoder;
+import io.aeron.archive.codecs.PurgeRecordingRequestDecoder;
+import io.aeron.archive.codecs.PurgeSegmentsRequestDecoder;
+import io.aeron.archive.codecs.RecordingPositionRequestDecoder;
+import io.aeron.archive.codecs.ReplayRequestDecoder;
+import io.aeron.archive.codecs.ReplayTokenRequestDecoder;
+import io.aeron.archive.codecs.ReplicateRequest2Decoder;
+import io.aeron.archive.codecs.ReplicateRequestDecoder;
+import io.aeron.archive.codecs.StartPositionRequestDecoder;
+import io.aeron.archive.codecs.StartRecordingRequest2Decoder;
+import io.aeron.archive.codecs.StartRecordingRequestDecoder;
+import io.aeron.archive.codecs.StopAllReplaysRequestDecoder;
+import io.aeron.archive.codecs.StopPositionRequestDecoder;
+import io.aeron.archive.codecs.StopRecordingByIdentityRequestDecoder;
+import io.aeron.archive.codecs.StopRecordingRequestDecoder;
+import io.aeron.archive.codecs.StopRecordingSubscriptionRequestDecoder;
+import io.aeron.archive.codecs.StopReplayRequestDecoder;
+import io.aeron.archive.codecs.StopReplicationRequestDecoder;
+import io.aeron.archive.codecs.TaggedReplicateRequestDecoder;
+import io.aeron.archive.codecs.TruncateRecordingRequestDecoder;
+import io.aeron.archive.codecs.UpdateChannelRequestDecoder;
 import io.aeron.archive.logging.ArchiveLog;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.logbuffer.Header;
@@ -92,6 +137,8 @@ class ControlSessionAdapter implements FragmentHandler
             throw new ArchiveException("expected schemaId=" + MessageHeaderDecoder.SCHEMA_ID + ", actual=" + schemaId);
         }
 
+        final Image image = (Image)header.context();
+
         final int templateId = headerDecoder.templateId();
         switch (templateId)
         {
@@ -103,8 +150,6 @@ class ControlSessionAdapter implements FragmentHandler
                     offset + MessageHeaderDecoder.ENCODED_LENGTH,
                     headerDecoder.blockLength(),
                     headerDecoder.version());
-
-                final Image image = (Image)header.context();
 
                 final ControlSession session = conductor.newControlSession(
                     image,
@@ -148,7 +193,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -173,7 +219,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -204,7 +251,6 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final String replayChannel = decoder.replayChannel();
                 final ChannelUri channelUri = ChannelUri.parse(replayChannel);
-                final Image image = (Image)header.context();
                 final ControlSession controlSession = setupSessionAndChannelForReplay(
                     channelUri,
                     replayToken,
@@ -212,7 +258,7 @@ class ControlSessionAdapter implements FragmentHandler
                     correlationId,
                     controlSessionId,
                     templateId,
-                    image.correlationId());
+                    image);
 
                 if (null != controlSession)
                 {
@@ -239,7 +285,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -259,7 +306,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -279,7 +327,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -308,7 +357,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -328,7 +378,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -354,7 +405,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -374,7 +426,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -394,7 +447,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -414,7 +468,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -434,7 +489,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -463,7 +519,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -501,8 +558,6 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final String replayChannel = decoder.replayChannel();
 
-                final Image image = (Image)header.context();
-
                 final ChannelUri channelUri = ChannelUri.parse(replayChannel);
                 final ControlSession controlSession = setupSessionAndChannelForReplay(
                     channelUri,
@@ -511,7 +566,7 @@ class ControlSessionAdapter implements FragmentHandler
                     correlationId,
                     controlSessionId,
                     templateId,
-                    image.correlationId());
+                    image);
 
                 if (null != controlSession)
                 {
@@ -539,7 +594,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -559,7 +615,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -593,7 +650,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -613,7 +671,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -633,7 +692,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -653,7 +713,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -673,7 +734,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -693,7 +755,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -713,7 +776,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -746,8 +810,6 @@ class ControlSessionAdapter implements FragmentHandler
                     decoder.skipEncodedCredentials();
                 }
                 final String clientInfo = decoder.clientInfo();
-
-                final Image image = (Image)header.context();
 
                 final ControlSession session = conductor.newControlSession(
                     image,
@@ -804,7 +866,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -824,7 +887,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -858,7 +922,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -883,7 +948,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -909,7 +975,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -929,7 +996,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 final int fileIoMaxLength = FILE_IO_MAX_LENGTH_VERSION <= headerDecoder.version() ?
                     decoder.fileIoMaxLength() : Aeron.NULL_VALUE;
@@ -984,7 +1052,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -1004,7 +1073,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -1024,7 +1094,8 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
 
                 if (null != controlSession)
                 {
@@ -1045,7 +1116,8 @@ class ControlSessionAdapter implements FragmentHandler
                 final long controlSessionId = decoder.controlSessionId();
                 final long correlationId = decoder.correlationId();
                 final long recordingId = decoder.recordingId();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
                 if (null != controlSession)
                 {
                     final long replayToken = conductor.generateReplayToken(controlSession, recordingId);
@@ -1068,7 +1140,8 @@ class ControlSessionAdapter implements FragmentHandler
                 final long correlationId = decoder.correlationId();
                 final long recordingId = decoder.recordingId();
                 final String channel = decoder.channel();
-                final ControlSession controlSession = getControlSession(correlationId, controlSessionId, templateId);
+                final ControlSession controlSession =
+                    getControlSession(correlationId, controlSessionId, templateId, image);
                 if (null != controlSession)
                 {
                     conductor.updateChannel(correlationId, recordingId, channel, controlSession);
@@ -1119,7 +1192,7 @@ class ControlSessionAdapter implements FragmentHandler
         final long correlationId,
         final long controlSessionId,
         final int templateId,
-        final long imageCorrelationId)
+        final Image image)
     {
         final ControlSession controlSession;
         if (channelUri.hasControlModeResponse() && Aeron.NULL_VALUE != replayToken)
@@ -1130,27 +1203,34 @@ class ControlSessionAdapter implements FragmentHandler
                 throw new ArchiveException("Unknown session or token timeout for replayToken=" + replayToken);
             }
 
-            channelUri.put(RESPONSE_CORRELATION_ID_PARAM_NAME, Long.toString(imageCorrelationId));
+            channelUri.put(RESPONSE_CORRELATION_ID_PARAM_NAME, Long.toString(image.correlationId()));
         }
         else
         {
-            controlSession = getControlSession(correlationId, controlSessionId, templateId);
+            controlSession = getControlSession(correlationId, controlSessionId, templateId, image);
         }
         return controlSession;
     }
 
     private ControlSession getControlSession(
-        final long correlationId, final long controlSessionId, final int templateId)
+        final long correlationId, final long controlSessionId, final int templateId, final Image image)
     {
         final SessionInfo info = controlSessionByIdMap.get(controlSessionId);
         if (null != info)
         {
+            if (info.image != image)
+            {
+                conductor.logWarning("unauthorised archive action=" + templateId +
+                    " controlSessionId=" + controlSessionId + " source=" + image.sourceIdentity());
+                return null;
+            }
+
             final ControlSession controlSession = info.controlSession;
             final byte[] principal = controlSession.encodedPrincipal();
             if (!authorisationService.isAuthorised(MessageHeaderDecoder.SCHEMA_ID, templateId, null, principal))
             {
                 conductor.logWarning("unauthorised archive action=" + templateId +
-                    " controlSessionId=" + controlSessionId + " source=" + info.image.sourceIdentity());
+                    " controlSessionId=" + controlSessionId + " source=" + image.sourceIdentity());
 
                 controlSession.sendErrorResponse(
                     correlationId, ArchiveException.UNAUTHORISED_ACTION, "unauthorised action");
