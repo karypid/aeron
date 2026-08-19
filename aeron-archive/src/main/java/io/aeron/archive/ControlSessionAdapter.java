@@ -175,7 +175,7 @@ class ControlSessionAdapter implements FragmentHandler
 
                 final long controlSessionId = decoder.controlSessionId();
                 final SessionInfo info = controlSessionByIdMap.get(controlSessionId);
-                if (null != info)
+                if (null != info && info.image == image)
                 {
                     info.controlSession.abort(ControlSession.SESSION_CLOSED_MSG);
                 }

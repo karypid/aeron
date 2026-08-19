@@ -230,6 +230,54 @@ class ControlSessionAdapterTest
         verify(mockConductor).generateReplayToken(mockSession, recordingId);
     }
 
+    @Test
+    void shouldOpenAndCloseSession()
+    {
+        final ControlSessionAdapter controlSessionAdapter = new ControlSessionAdapter(
+            new ControlRequestDecoders(),
+            mockControlSubsciption,
+            mockLocalControlSubsciption,
+            mockConductor,
+            mockAuthorisationService);
+        setupControlSession(controlSessionAdapter, CONTROL_SESSION_ID);
+
+        final ExpandableArrayBuffer buffer = new ExpandableArrayBuffer();
+        final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
+        final CloseSessionRequestEncoder closeSessionRequestEncoder = new CloseSessionRequestEncoder();
+
+        closeSessionRequestEncoder.wrapAndApplyHeader(buffer, 0, headerEncoder);
+        closeSessionRequestEncoder.controlSessionId(CONTROL_SESSION_ID);
+
+        controlSessionAdapter.onFragment(buffer, 0, closeSessionRequestEncoder.encodedLength(), mockHeader);
+
+        verify(mockSession).abort(ControlSession.SESSION_CLOSED_MSG);
+    }
+
+    @Test
+    void shouldNotCloseSessionIfRequestCameFromDifferentImage()
+    {
+        final ControlSessionAdapter controlSessionAdapter = new ControlSessionAdapter(
+            new ControlRequestDecoders(),
+            mockControlSubsciption,
+            mockLocalControlSubsciption,
+            mockConductor,
+            mockAuthorisationService);
+        setupControlSession(controlSessionAdapter, CONTROL_SESSION_ID);
+
+        final ExpandableArrayBuffer buffer = new ExpandableArrayBuffer();
+        final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
+        final CloseSessionRequestEncoder closeSessionRequestEncoder = new CloseSessionRequestEncoder();
+
+        closeSessionRequestEncoder.wrapAndApplyHeader(buffer, 0, headerEncoder);
+        closeSessionRequestEncoder.controlSessionId(CONTROL_SESSION_ID);
+
+        final Image anotherImage = mock(Image.class);
+        when(mockHeader.context()).thenReturn(anotherImage);
+        controlSessionAdapter.onFragment(buffer, 0, closeSessionRequestEncoder.encodedLength(), mockHeader);
+
+        verify(mockSession, never()).abort(ControlSession.SESSION_CLOSED_MSG);
+    }
+
     private void setupControlSession(final ControlSessionAdapter controlSessionAdapter, final long controlSessionId)
     {
         final MutableDirectBuffer buffer = new ExpandableArrayBuffer();
