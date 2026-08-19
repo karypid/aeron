@@ -50,11 +50,16 @@ import static io.aeron.archive.ArchiveSystemTests.CATALOG_CAPACITY;
 import static io.aeron.archive.ArchiveSystemTests.awaitSignal;
 import static io.aeron.archive.ArchiveSystemTests.injectRecordingSignalConsumer;
 import static io.aeron.archive.ArchiveSystemTests.offerToPosition;
-import static io.aeron.archive.client.AeronArchive.*;
+import static io.aeron.archive.client.AeronArchive.connect;
+import static io.aeron.archive.client.AeronArchive.segmentFileBasePosition;
 import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.arrayContaining;
+import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
+import static org.hamcrest.Matchers.arrayWithSize;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith({ EventLogExtension.class, InterruptingTestCallback.class })
@@ -453,6 +458,77 @@ class ManageRecordingHistoryTest
             awaitSignal(aeronArchive, signalConsumer, RecordingSignal.DELETE);
 
             assertThat(archiveDir.list(((dir, name) -> name.startsWith(prefix))), arrayWithSize(0));
+        }
+    }
+
+    @Test
+    @InterruptAfter(120)
+    void shouldAttachSegmentsWhenFirstSegmentGapExceedsFileIoMaxLength() throws IOException
+    {
+        final int fileIoMaxLength = archive.context().fileIoMaxLength();
+        final int termLength = 2 * fileIoMaxLength;
+        final int segmentLength = Math.max(archive.context().segmentFileLength(), termLength);
+        final int initialTermId = 7;
+        final long gapLargerThanIoLength = fileIoMaxLength + FRAME_ALIGNMENT;
+
+        final long startPosition = (termLength * 2L) + gapLargerThanIoLength;
+        final long firstSegmentBase = segmentFileBasePosition(startPosition, startPosition, termLength, segmentLength);
+        final long recordingId = recordFromSpecificStartPosition(
+            "localhost:3334", STREAM_ID, termLength, initialTermId, startPosition, segmentLength);
+
+        final long detachPosition = firstSegmentBase + segmentLength;
+        aeronArchive.detachSegments(recordingId, detachPosition);
+        assertEquals(detachPosition, aeronArchive.getStartPosition(recordingId));
+        assertNotEquals(detachPosition, startPosition);
+
+        aeronArchive.attachSegments(recordingId);
+
+        // Start position should be correct.
+        assertEquals(startPosition, aeronArchive.getStartPosition(recordingId));
+
+        // Should be able to successfully start a replay.
+        final long replaySessionId = aeronArchive.startReplay(
+            recordingId, startPosition, segmentLength, uriBuilder.build(), STREAM_ID + 2);
+
+        aeronArchive.stopReplay(replaySessionId);
+    }
+
+    private long recordFromSpecificStartPosition(
+        final String endpoint,
+        final int streamId,
+        final int termLength,
+        final int initialTermId,
+        final long startPosition,
+        final int segmentLength)
+    {
+        final String channel = new ChannelUriStringBuilder()
+            .media("udp")
+            .endpoint(endpoint)
+            .mtu(MTU_LENGTH)
+            .termLength(termLength)
+            .initialPosition(startPosition, initialTermId, termLength)
+            .build();
+
+        try (Publication publication = aeronArchive.addRecordedExclusivePublication(channel, streamId))
+        {
+            assertEquals(startPosition, publication.position());
+
+            final CountersReader counters = aeron.countersReader();
+            final int counterId =
+                Tests.awaitRecordingCounterId(counters, publication.sessionId(), aeronArchive.archiveId());
+            final long recordingId = RecordingPos.getRecordingId(counters, counterId);
+
+            // Two whole segments beyond the first segment base so that a one-segment detach is valid.
+            final long firstSegmentBase = segmentFileBasePosition(
+                startPosition, startPosition, termLength, segmentLength);
+            offerToPosition(publication, "Message-Prefix-", firstSegmentBase + (segmentLength * 2L) + 1000);
+            Tests.awaitPosition(counters, counterId, publication.position());
+
+            signalConsumer.reset();
+            aeronArchive.stopRecording(publication);
+            awaitSignal(aeronArchive, signalConsumer, recordingId, RecordingSignal.STOP);
+
+            return recordingId;
         }
     }
 }

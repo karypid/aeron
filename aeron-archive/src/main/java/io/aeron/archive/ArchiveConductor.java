@@ -1802,6 +1802,8 @@ abstract class ArchiveConductor
         }
 
         final int fragmentLength = fragmentLength(buffer, termOffset);
+        int frameOffsetInBuffer = 0;
+
         if (fragmentLength <= 0)
         {
             boolean found = false;
@@ -1823,6 +1825,7 @@ abstract class ArchiveConductor
                     if (fragmentLength(buffer, offset) > 0)
                     {
                         found = true;
+                        frameOffsetInBuffer = offset;
                         break;
                     }
 
@@ -1841,7 +1844,7 @@ abstract class ArchiveConductor
             return NULL_VALUE;
         }
 
-        final int fileTermId = termId(buffer, termOffset);
+        final int fileTermId = termId(buffer, frameOffsetInBuffer);
         if (fileTermId != termId)
         {
             final String msg = "term id does not match: actual=" + fileTermId + " expected=" + termId;
@@ -1849,7 +1852,7 @@ abstract class ArchiveConductor
             return NULL_VALUE;
         }
 
-        final int fileStreamId = streamId(buffer, termOffset);
+        final int fileStreamId = streamId(buffer, frameOffsetInBuffer);
         if (fileStreamId != streamId)
         {
             final String msg = "stream id does not match: actual=" + fileStreamId + " expected=" + streamId;
