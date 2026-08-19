@@ -20,6 +20,7 @@ import io.aeron.AeronCounters;
 import io.aeron.ChannelUri;
 import io.aeron.ChannelUriStringBuilder;
 import io.aeron.Counter;
+import io.aeron.ExclusivePublication;
 import io.aeron.Image;
 import io.aeron.Publication;
 import io.aeron.RethrowingErrorHandler;
@@ -85,11 +86,13 @@ import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntConsumer;
 
 import static io.aeron.Aeron.NULL_VALUE;
@@ -101,6 +104,7 @@ import static io.aeron.CommonContext.generateRandomDirName;
 import static io.aeron.archive.ArchiveThreadingMode.DEDICATED;
 import static io.aeron.archive.ArchiveThreadingMode.SHARED;
 import static io.aeron.archive.Catalog.MIN_CAPACITY;
+import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
 import static io.aeron.archive.client.AeronArchive.segmentFileBasePosition;
 import static io.aeron.archive.codecs.SourceLocation.LOCAL;
 import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
@@ -489,21 +493,21 @@ class ArchiveTest
         try (TestMediaDriver driver = TestMediaDriver.launch(driverCtx, systemTestWatcher);
             Archive archive1 = Archive.launch(
                 new Archive.Context()
-                .controlChannel(LOCALHOST_CONTROL_REQUEST_CHANNEL)
-                .replicationChannel(LOCALHOST_REPLICATION_CHANNEL)
-                .deleteArchiveOnStart(true)
-                .threadingMode(SHARED)
-                .aeronDirectoryName(driver.aeronDirectoryName())
-                .archiveDir(archive1Dir.toFile())
-                .archiveId(42));
+                    .controlChannel(LOCALHOST_CONTROL_REQUEST_CHANNEL)
+                    .replicationChannel(LOCALHOST_REPLICATION_CHANNEL)
+                    .deleteArchiveOnStart(true)
+                    .threadingMode(SHARED)
+                    .aeronDirectoryName(driver.aeronDirectoryName())
+                    .archiveDir(archive1Dir.toFile())
+                    .archiveId(42));
             Archive archive2 = Archive.launch(
                 new Archive.Context()
-                .controlChannel("aeron:udp?endpoint=localhost:8011")
-                .replicationChannel(LOCALHOST_REPLICATION_CHANNEL)
-                .deleteArchiveOnStart(true)
-                .threadingMode(SHARED)
-                .aeronDirectoryName(aeronDir.toString())
-                .archiveDir(archive2Dir.toFile()));
+                    .controlChannel("aeron:udp?endpoint=localhost:8011")
+                    .replicationChannel(LOCALHOST_REPLICATION_CHANNEL)
+                    .deleteArchiveOnStart(true)
+                    .threadingMode(SHARED)
+                    .aeronDirectoryName(aeronDir.toString())
+                    .archiveDir(archive2Dir.toFile()));
             AeronArchive client1 = AeronArchive.connect(new AeronArchive.Context()
                 .aeronDirectoryName(driver.aeronDirectoryName())
                 .controlRequestChannel(archive1.context().controlChannel())
@@ -972,7 +976,7 @@ class ArchiveTest
                 assertThat(event.getMessage(), allOf(
                     Matchers.startsWith("WARN - controlSessionId=" + client2.controlSessionId() + " ("),
                     Matchers.endsWith(") terminated: failed to send response for more than connectTimeoutMs=" +
-                    TimeUnit.NANOSECONDS.toMillis(archive.context().connectTimeoutNs())),
+                        TimeUnit.NANOSECONDS.toMillis(archive.context().connectTimeoutNs())),
                     Matchers.containsString("controlResponseStreamId=999"),
                     Matchers.containsString("controlResponseChannel=aeron:" + parsedResponseChannel.media())));
 
@@ -1130,10 +1134,10 @@ class ArchiveTest
             final String localAddress = LocalSocketAddressStatus.findAddress(
                 countersReader, requestPublication.channelStatus(), requestPublication.channelStatusId());
             assertEquals(ControlSessionCounter.NAME + ": name=" + clientName + " " +
-                AeronCounters.formatVersionInfo(AeronArchiveVersion.VERSION, AeronArchiveVersion.GIT_SHA) +
-                " sourceIdentity=" + localAddress +
-                " sessionId=" + requestPublication.sessionId() +
-                ArchiveCounters.ARCHIVE_ID_LABEL_SUFFIX + aeronArchive.archiveId(),
+                    AeronCounters.formatVersionInfo(AeronArchiveVersion.VERSION, AeronArchiveVersion.GIT_SHA) +
+                    " sourceIdentity=" + localAddress +
+                    " sessionId=" + requestPublication.sessionId() +
+                    ArchiveCounters.ARCHIVE_ID_LABEL_SUFFIX + aeronArchive.archiveId(),
                 countersReader.getCounterLabel(counterId));
 
             aeronArchive.close();
@@ -1193,10 +1197,10 @@ class ArchiveTest
 
             final Publication requestPublication = aeronArchive.archiveProxy().publication();
             assertEquals(ControlSessionCounter.NAME + ": name=" + clientName + " " +
-                AeronCounters.formatVersionInfo(AeronArchiveVersion.VERSION, AeronArchiveVersion.GIT_SHA) +
-                " sourceIdentity=aeron:ipc" +
-                " sessionId=" + requestPublication.sessionId() +
-                ArchiveCounters.ARCHIVE_ID_LABEL_SUFFIX + aeronArchive.archiveId(),
+                    AeronCounters.formatVersionInfo(AeronArchiveVersion.VERSION, AeronArchiveVersion.GIT_SHA) +
+                    " sourceIdentity=aeron:ipc" +
+                    " sessionId=" + requestPublication.sessionId() +
+                    ArchiveCounters.ARCHIVE_ID_LABEL_SUFFIX + aeronArchive.archiveId(),
                 countersReader.getCounterLabel(counterId));
 
             aeronArchive.close();
@@ -1246,6 +1250,237 @@ class ArchiveTest
             }
 
             assertEquals(archive.context().archiveId(), aeronArchive.archiveId());
+        }
+    }
+
+    @Test
+    void shouldEnforceMaxRecordingLimitForStartRecording(@TempDir final Path temp) throws InterruptedException
+    {
+        final int maxConcurrentRecordings = 2;
+        try (TestMediaDriver driver = TestMediaDriver.launch(new MediaDriver.Context()
+            .aeronDirectoryName(generateRandomDirName())
+            .threadingMode(ThreadingMode.SHARED), systemTestWatcher);
+            Archive archive = Archive.launch(new Archive.Context()
+                .threadingMode(DEDICATED)
+                .archiveDir(temp.toFile())
+                .archiveId(3)
+                .controlChannel("aeron:udp?endpoint=localhost:8888")
+                .controlStreamId(4242)
+                .segmentFileLength(LogBufferDescriptor.TERM_MIN_LENGTH)
+                .replicationChannel("aeron:udp?endpoint=localhost:0")
+                .aeronDirectoryName(driver.context().aeronDirectoryName())
+                .maxConcurrentRecordings(maxConcurrentRecordings));
+            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
+        {
+            final AeronArchive.Context aeronArchiveCtx = new AeronArchive.Context()
+                .controlRequestChannel(AeronArchive.Configuration.localControlChannel())
+                .controlRequestStreamId(archive.context().localControlStreamId())
+                .controlResponseChannel("aeron:ipc?term-length=64k|control-mode=response")
+                .errorHandler(null)
+                .aeron(aeron);
+
+            final int threads = maxConcurrentRecordings * 2 + 1;
+            final CountDownLatch startLatch = new CountDownLatch(threads + 1);
+            final CountDownLatch endLatch = new CountDownLatch(threads);
+            final AtomicInteger success = new AtomicInteger();
+            final AtomicInteger fail = new AtomicInteger();
+            for (int i = 0; i < threads; i++)
+            {
+                final int streamId = 1000 + i;
+                final Thread thread = new Thread(() ->
+                {
+                    try (AeronArchive aeronArchive = AeronArchive.connect(aeronArchiveCtx.clone()))
+                    {
+                        startLatch.countDown();
+                        startLatch.await();
+
+                        try
+                        {
+                            aeronArchive.startRecording("aeron:ipc?term-length=64", streamId, LOCAL);
+                            success.incrementAndGet();
+                        }
+                        catch (final ArchiveException ex)
+                        {
+                            assertEquals(ArchiveException.MAX_RECORDINGS, ex.errorCode());
+                            fail.incrementAndGet();
+                        }
+                    }
+                    catch (final InterruptedException ex)
+                    {
+                        fail.incrementAndGet();
+                    }
+                    finally
+                    {
+                        endLatch.countDown();
+                    }
+                });
+                thread.setDaemon(true);
+                thread.start();
+            }
+
+            startLatch.countDown();
+            startLatch.await();
+
+            endLatch.await();
+
+            assertEquals(maxConcurrentRecordings, success.get(), "invalid number of active recordings");
+            assertEquals(threads - maxConcurrentRecordings, fail.get());
+        }
+    }
+
+    @Test
+    @SuppressWarnings("MethodLength")
+    void shouldEnforceMaxRecordingLimitForExtendRecording(@TempDir final Path temp) throws InterruptedException
+    {
+        final int maxConcurrentRecordings = 1;
+        try (TestMediaDriver driver = TestMediaDriver.launch(new MediaDriver.Context()
+            .aeronDirectoryName(generateRandomDirName())
+            .threadingMode(ThreadingMode.SHARED), systemTestWatcher);
+            Archive archive = Archive.launch(new Archive.Context()
+                .threadingMode(DEDICATED)
+                .archiveDir(temp.toFile())
+                .archiveId(3)
+                .controlChannel("aeron:udp?endpoint=localhost:8888")
+                .controlStreamId(4242)
+                .segmentFileLength(LogBufferDescriptor.TERM_MIN_LENGTH)
+                .replicationChannel("aeron:udp?endpoint=localhost:0")
+                .aeronDirectoryName(driver.context().aeronDirectoryName())
+                .maxConcurrentRecordings(maxConcurrentRecordings));
+            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
+        {
+            final AeronArchive.Context aeronArchiveCtx = new AeronArchive.Context()
+                .controlRequestChannel(AeronArchive.Configuration.localControlChannel())
+                .controlRequestStreamId(archive.context().localControlStreamId())
+                .controlResponseChannel("aeron:ipc?term-length=64k|control-mode=response")
+                .errorHandler(null)
+                .aeron(aeron);
+
+            final int threads = maxConcurrentRecordings * 2 + 1;
+            final String channel = "aeron:ipc?term-length=64k";
+            final long[] recordingIds = new long[threads];
+            try (AeronArchive aeronArchive = AeronArchive.connect(aeronArchiveCtx.clone()))
+            {
+                for (int i = 0; i < threads; i++)
+                {
+                    final int streamId = 1000 + i;
+                    final ExclusivePublication publication = aeron.addExclusivePublication(channel, streamId);
+                    final String recordedChannel = ChannelUri.addSessionId(channel, publication.sessionId());
+                    aeronArchive.startRecording(
+                        recordedChannel, streamId, LOCAL);
+                    final int counterId = Tests.awaitRecordingCounterId(
+                        aeron.countersReader(), publication.sessionId(), aeronArchive.archiveId());
+                    recordingIds[i] = RecordingPos.getRecordingId(aeron.countersReader(), counterId);
+                    aeronArchive.stopRecording(recordedChannel, streamId);
+                }
+
+                int count = 0;
+                while (count < threads)
+                {
+                    for (final long recordingId : recordingIds)
+                    {
+                        if (NULL_POSITION != aeronArchive.getStopPosition(recordingId))
+                        {
+                            count++;
+                        }
+                    }
+                }
+            }
+
+            final CountDownLatch startLatch = new CountDownLatch(threads + 1);
+            final CountDownLatch endLatch = new CountDownLatch(threads);
+            final AtomicInteger success = new AtomicInteger();
+            final AtomicInteger fail = new AtomicInteger();
+            for (int i = 0; i < threads; i++)
+            {
+                final int streamId = 1000 + i;
+                final int index = i;
+                final Thread thread = new Thread(() ->
+                {
+                    try (AeronArchive aeronArchive = AeronArchive.connect(aeronArchiveCtx.clone()))
+                    {
+                        startLatch.countDown();
+                        startLatch.await();
+
+                        try
+                        {
+                            aeronArchive.extendRecording(recordingIds[index], channel, streamId, LOCAL);
+                            success.incrementAndGet();
+                        }
+                        catch (final ArchiveException ex)
+                        {
+                            assertEquals(ArchiveException.MAX_RECORDINGS, ex.errorCode());
+                            fail.incrementAndGet();
+                        }
+                    }
+                    catch (final InterruptedException ex)
+                    {
+                        fail.incrementAndGet();
+                    }
+                    finally
+                    {
+                        endLatch.countDown();
+                    }
+                });
+                thread.setDaemon(true);
+                thread.start();
+            }
+
+            startLatch.countDown();
+            startLatch.await();
+
+            endLatch.await();
+
+            assertEquals(maxConcurrentRecordings, success.get(), "invalid number of active recordings");
+            assertEquals(threads - maxConcurrentRecordings, fail.get());
+        }
+    }
+
+    @Test
+    void shouldAllowNewRecordingsWhenPreviousTerminate(@TempDir final Path temp) throws InterruptedException
+    {
+        final int maxConcurrentRecordings = 3;
+        try (TestMediaDriver driver = TestMediaDriver.launch(new MediaDriver.Context()
+            .aeronDirectoryName(generateRandomDirName())
+            .threadingMode(ThreadingMode.SHARED), systemTestWatcher);
+            Archive archive = Archive.launch(new Archive.Context()
+                .threadingMode(DEDICATED)
+                .archiveDir(temp.toFile())
+                .archiveId(3)
+                .controlChannel("aeron:udp?endpoint=localhost:8888")
+                .controlStreamId(4242)
+                .segmentFileLength(LogBufferDescriptor.TERM_MIN_LENGTH)
+                .replicationChannel("aeron:udp?endpoint=localhost:0")
+                .aeronDirectoryName(driver.context().aeronDirectoryName())
+                .maxConcurrentRecordings(maxConcurrentRecordings));
+            Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()));
+            AeronArchive aeronArchive = AeronArchive.connect(new AeronArchive.Context()
+                .controlRequestChannel(AeronArchive.Configuration.localControlChannel())
+                .controlRequestStreamId(archive.context().localControlStreamId())
+                .controlResponseChannel("aeron:ipc?term-length=64k|control-mode=response")
+                .errorHandler(null)
+                .aeron(aeron)))
+        {
+            final String channel = "aeron:ipc?term-length=64k";
+            final List<ExclusivePublication> publications = new ArrayList<>();
+            for (int i = 0; i < maxConcurrentRecordings; i++)
+            {
+                final ExclusivePublication publication = aeron.addExclusivePublication(channel, 555 + i);
+                publications.add(publication);
+                aeronArchive.startRecording(
+                    ChannelUri.addSessionId(channel, publication.sessionId()), publication.streamId(), LOCAL);
+                Tests.awaitRecordingCounterId(
+                    aeron.countersReader(), publication.sessionId(), aeronArchive.archiveId());
+            }
+
+            Tests.await(() -> archive.context().recordingSessionCounter().get() == maxConcurrentRecordings);
+
+            aeronArchive.stopRecording(publications.get(0));
+            Tests.await(() -> archive.context().recordingSessionCounter().get() < maxConcurrentRecordings);
+
+            final ExclusivePublication publication = aeron.addExclusivePublication(channel, 1000);
+            aeronArchive.startRecording(
+                ChannelUri.addSessionId(channel, publication.sessionId()), publication.streamId(), LOCAL);
+            Tests.awaitRecordingCounterId(aeron.countersReader(), publication.sessionId(), aeronArchive.archiveId());
         }
     }
 

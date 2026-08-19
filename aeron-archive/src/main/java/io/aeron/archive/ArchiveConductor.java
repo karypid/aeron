@@ -137,6 +137,7 @@ abstract class ArchiveConductor
     private long markFileUpdateDeadlineMs = 0;
     private int replayId = 1;
     private int numActiveReplays;
+    private int numActiveRecordings;
     private volatile boolean isAbort;
 
     private final RecordingSummary recordingSummary = new RecordingSummary();
@@ -534,7 +535,7 @@ abstract class ArchiveConductor
         final String originalChannel,
         final ControlSession controlSession)
     {
-        if (recordingSessionByIdMap.size() >= ctx.maxConcurrentRecordings())
+        if (numActiveRecordings >= ctx.maxConcurrentRecordings())
         {
             final String msg = "max concurrent recordings reached " + ctx.maxConcurrentRecordings();
             controlSession.sendErrorResponse(correlationId, MAX_RECORDINGS, msg);
@@ -565,6 +566,7 @@ abstract class ArchiveConductor
 
                 recordingSubscriptionByKeyMap.put(key, subscription);
                 subscriptionRefCountMap.incrementAndGet(subscription.registrationId());
+                numActiveRecordings++;
                 controlSession.sendOkResponse(correlationId, subscription.registrationId());
             }
             else
@@ -1071,7 +1073,7 @@ abstract class ArchiveConductor
         final String originalChannel,
         final ControlSession controlSession)
     {
-        if (recordingSessionByIdMap.size() >= ctx.maxConcurrentRecordings())
+        if (numActiveRecordings >= ctx.maxConcurrentRecordings())
         {
             final String msg = "max concurrent recordings reached at " + ctx.maxConcurrentRecordings();
             controlSession.sendErrorResponse(correlationId, MAX_RECORDINGS, msg);
@@ -1134,6 +1136,7 @@ abstract class ArchiveConductor
 
                 recordingSubscriptionByKeyMap.put(key, subscription);
                 subscriptionRefCountMap.incrementAndGet(subscription.registrationId());
+                numActiveRecordings++;
                 controlSession.sendOkResponse(correlationId, subscription.registrationId());
 
                 return subscription;
@@ -1325,21 +1328,16 @@ abstract class ArchiveConductor
 
     void closeRecordingSession(final RecordingSession session)
     {
-        if (isAbort)
-        {
-            session.abortClose();
-        }
-        else
-        {
-            final Subscription subscription = session.subscription();
-            final long position = session.recordedPosition();
-            final long recordingId = session.sessionId();
-            final long subscriptionId = subscription.registrationId();
+        final Subscription subscription = session.subscription();
+        final long position = session.recordedPosition();
+        final long recordingId = session.sessionId();
+        final long subscriptionId = subscription.registrationId();
 
+        if (!isAbort)
+        {
             try
             {
                 catalog.recordingStopped(recordingId, position, epochClock.time());
-                recordingSessionByIdMap.remove(recordingId);
                 session.sendPendingError();
                 session.controlSession().sendSignal(
                     session.correlationId(),
@@ -1352,14 +1350,16 @@ abstract class ArchiveConductor
             {
                 errorHandler.onError(ex);
             }
-
-            if (subscriptionRefCountMap.decrementAndGet(subscriptionId) <= 0 || session.isAutoStop())
-            {
-                closeAndRemoveRecordingSubscription(subscription, "close recording session");
-            }
-            closeSession(session);
-            ctx.recordingSessionCounter().decrementRelease();
         }
+
+        if (subscriptionRefCountMap.decrementAndGet(subscriptionId) <= 0 || session.isAutoStop())
+        {
+            closeAndRemoveRecordingSubscription(subscription, "close recording session");
+        }
+        closeSession(session);
+        recordingSessionByIdMap.remove(recordingId);
+        numActiveRecordings--;
+        ctx.recordingSessionCounter().decrementRelease();
     }
 
     void closeReplaySession(final ReplaySession session)

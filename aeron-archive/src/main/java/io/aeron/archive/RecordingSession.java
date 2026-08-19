@@ -158,11 +158,6 @@ class RecordingSession implements Session
         return workCount;
     }
 
-    void abortClose()
-    {
-        recordingWriter.close();
-    }
-
     long correlationId()
     {
         return correlationId;
