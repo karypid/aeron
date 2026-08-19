@@ -75,7 +75,10 @@ class ArchiveLoggingSystemTest
     @AfterEach
     void after()
     {
-        reader.reset();
+        if (null != reader)
+        {
+            reader.reset();
+        }
     }
 
     @Test
@@ -190,6 +193,11 @@ class ArchiveLoggingSystemTest
                         originalChannel,
                         sourceIdentity) -> assertEquals(startPosition, newStopPosition));
                 assertEquals(1, count);
+            }
+
+            while (0 < EventConfiguration.eventReader().ringBuffer().size())
+            {
+                Tests.yield();
             }
 
             final Path logFile = tempDir.resolve("archive.log");
