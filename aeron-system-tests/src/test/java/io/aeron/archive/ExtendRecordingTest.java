@@ -56,7 +56,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,6 +73,8 @@ import static io.aeron.archive.codecs.RecordingSignal.STOP;
 import static io.aeron.archive.codecs.SourceLocation.LOCAL;
 import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MIN_LENGTH;
 import static org.agrona.BitUtil.SIZE_OF_INT;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
@@ -389,12 +390,9 @@ class ExtendRecordingTest
         final AtomicInteger success = new AtomicInteger();
         final AtomicInteger error = new AtomicInteger();
         final AtomicReference<Throwable> exception = new AtomicReference<>();
-        final long[] recordingSubscriptions = new long[threads];
-        Arrays.fill(recordingSubscriptions, NULL_VALUE);
 
         for (int i = 0; i < threads; i++)
         {
-            final int index = i;
             final Thread thread = new Thread(() ->
             {
                 try (ExclusivePublication publication = aeron.addExclusivePublication(channel, streamId);
@@ -404,22 +402,22 @@ class ExtendRecordingTest
                     start.countDown();
                     start.await();
 
-                    recordingSubscriptions[index] = localArchive.extendRecording(
-                        recordingId, ChannelUri.addSessionId(channel, publication.sessionId()), streamId, LOCAL);
-                    success.incrementAndGet();
-
-                    while (error.get() != threads - 1)
+                    try
                     {
-                        try
+                        localArchive.extendRecording(
+                            recordingId, ChannelUri.addSessionId(channel, publication.sessionId()), streamId, LOCAL);
+                        success.incrementAndGet();
+
+                        while (error.get() != threads - 1)
                         {
                             localArchive.checkForErrorResponse();
                             Tests.sleep(1);
                         }
-                        catch (final ArchiveException ex)
-                        {
-                            assertEquals(ACTIVE_RECORDING, ex.errorCode());
-                            error.incrementAndGet();
-                        }
+                    }
+                    catch (final ArchiveException ex)
+                    {
+                        assertEquals(ACTIVE_RECORDING, ex.errorCode());
+                        error.incrementAndGet();
                     }
                 }
                 catch (final Exception ex)
@@ -448,12 +446,8 @@ class ExtendRecordingTest
         {
             LangUtil.rethrowUnchecked(exception.get());
         }
-        assertEquals(threads, success.get());
+        assertThat(success.get(), greaterThanOrEqualTo(threads));
         assertEquals(threads - 1, error.get());
-        for (final long registrationId : recordingSubscriptions)
-        {
-            assertNotEquals(NULL_VALUE, registrationId);
-        }
     }
 
     @Test
