@@ -74,7 +74,7 @@ import static io.aeron.archive.codecs.SourceLocation.LOCAL;
 import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MIN_LENGTH;
 import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
@@ -446,7 +446,7 @@ class ExtendRecordingTest
         {
             LangUtil.rethrowUnchecked(exception.get());
         }
-        assertThat(success.get(), greaterThanOrEqualTo(threads));
+        assertThat(success.get(), lessThanOrEqualTo(threads));
         assertEquals(threads - 1, error.get());
     }
 
