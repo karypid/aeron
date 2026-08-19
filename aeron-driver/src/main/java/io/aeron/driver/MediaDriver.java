@@ -163,7 +163,7 @@ public final class MediaDriver implements AutoCloseable
 
     static final String AERON_DRIVER_SHARED_THREAD_NAME = "aeron-md-shd";
     static final String AERON_DRIVER_CONDUCTOR_THREAD_NAME = "aeron-md-cnd";
-    static final String AERON_DRIVER_SHARED_NETWORK_THREAD_NAME = "aeron-md-ntw";
+    static final String AERON_DRIVER_SHARED_NETWORK_THREAD_NAME = "aeron-md-net";
     static final String AERON_DRIVER_NATIVE_RESOURCE_THREAD_NAME = "aeron-md-nra";
 
     static final String AERON_DRIVER_SENDER_THREAD_NAME_CLASSIC = "sender";
