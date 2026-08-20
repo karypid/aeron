@@ -160,25 +160,4 @@ public final class LogUtil
         final int byteOffset = (index * 2) + offset;
         return ((buffer.getByte(byteOffset) << 8) & 0xFF00) | (buffer.getByte(byteOffset + 1) & 0xFF);
     }
-
-    /**
-     * Append a simple hex string to a {@link StringBuilder}.
-     *
-     * @param sb        to write the string to.
-     * @param buffer    to read the data from.
-     * @param offset    to read the data from.
-     * @param length    to read the data from.
-     */
-    public static void appendHexString(
-        final StringBuilder sb,
-        final DirectBuffer buffer,
-        final int offset,
-        final int length)
-    {
-        for (int i = 0; i < length; i++)
-        {
-            final int index = offset + i;
-            sb.append(byteToHexStringPadded(buffer.getByte(index)));
-        }
-    }
 }

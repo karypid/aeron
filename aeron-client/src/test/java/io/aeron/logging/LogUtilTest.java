@@ -15,9 +15,6 @@
  */
 package io.aeron.logging;
 
-import org.agrona.ExpandableArrayBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -45,19 +42,5 @@ class LogUtilTest
         final int lastCharIndex = buff.length() - 1;
         assertEquals(expected, buff.substring(0, lastCharIndex));
         assertEquals(' ', buff.charAt(lastCharIndex));
-    }
-
-    @Test
-    void shouldAppendByteString()
-    {
-        final byte[] bs = {
-            (byte)0x01, (byte)0x23, (byte)0x45, (byte)0x67,
-            (byte)0x89, (byte)0xab, (byte)0xcd, (byte)0xef,
-        };
-        final MutableDirectBuffer buffer = new ExpandableArrayBuffer(16);
-        buffer.putBytes(0, bs);
-        final StringBuilder sb = new StringBuilder();
-        LogUtil.appendHexString(sb, buffer, 0, bs.length);
-        assertEquals("0123456789abcdef", sb.toString());
     }
 }
