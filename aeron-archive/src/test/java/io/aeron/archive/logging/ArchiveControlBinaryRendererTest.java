@@ -15,7 +15,46 @@
  */
 package io.aeron.archive.logging;
 
-import io.aeron.archive.codecs.*;
+import io.aeron.archive.codecs.AttachSegmentsRequestEncoder;
+import io.aeron.archive.codecs.AuthConnectRequestEncoder;
+import io.aeron.archive.codecs.BooleanType;
+import io.aeron.archive.codecs.BoundedReplayRequestEncoder;
+import io.aeron.archive.codecs.CloseSessionRequestEncoder;
+import io.aeron.archive.codecs.ControlResponseEncoder;
+import io.aeron.archive.codecs.DeleteDetachedSegmentsRequestEncoder;
+import io.aeron.archive.codecs.DetachSegmentsRequestEncoder;
+import io.aeron.archive.codecs.ExtendRecordingRequest2Encoder;
+import io.aeron.archive.codecs.ExtendRecordingRequestEncoder;
+import io.aeron.archive.codecs.FindLastMatchingRecordingRequestEncoder;
+import io.aeron.archive.codecs.KeepAliveRequestEncoder;
+import io.aeron.archive.codecs.ListRecordingRequestEncoder;
+import io.aeron.archive.codecs.ListRecordingSubscriptionsRequestEncoder;
+import io.aeron.archive.codecs.ListRecordingsForUriRequestEncoder;
+import io.aeron.archive.codecs.ListRecordingsRequestEncoder;
+import io.aeron.archive.codecs.MessageHeaderDecoder;
+import io.aeron.archive.codecs.MessageHeaderEncoder;
+import io.aeron.archive.codecs.MigrateSegmentsRequestEncoder;
+import io.aeron.archive.codecs.PurgeRecordingRequestEncoder;
+import io.aeron.archive.codecs.PurgeSegmentsRequestEncoder;
+import io.aeron.archive.codecs.RecordingPositionRequestEncoder;
+import io.aeron.archive.codecs.RecordingSignal;
+import io.aeron.archive.codecs.RecordingSignalEventEncoder;
+import io.aeron.archive.codecs.ReplayRequestEncoder;
+import io.aeron.archive.codecs.ReplicateRequest2Encoder;
+import io.aeron.archive.codecs.ReplicateRequestEncoder;
+import io.aeron.archive.codecs.SourceLocation;
+import io.aeron.archive.codecs.StartPositionRequestEncoder;
+import io.aeron.archive.codecs.StartRecordingRequest2Encoder;
+import io.aeron.archive.codecs.StartRecordingRequestEncoder;
+import io.aeron.archive.codecs.StopAllReplaysRequestEncoder;
+import io.aeron.archive.codecs.StopPositionRequestEncoder;
+import io.aeron.archive.codecs.StopRecordingByIdentityRequestEncoder;
+import io.aeron.archive.codecs.StopRecordingRequestEncoder;
+import io.aeron.archive.codecs.StopRecordingSubscriptionRequestEncoder;
+import io.aeron.archive.codecs.StopReplayRequestEncoder;
+import io.aeron.archive.codecs.StopReplicationRequestEncoder;
+import io.aeron.archive.codecs.TaggedReplicateRequestEncoder;
+import io.aeron.archive.codecs.TruncateRecordingRequestEncoder;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,23 +71,6 @@ class ArchiveControlBinaryRendererTest
     private final StringBuilder sb = new StringBuilder();
     private final MessageHeaderEncoder headerEncoder = new MessageHeaderEncoder();
     private final ArchiveControlBinaryRenderer renderer = new ArchiveControlBinaryRenderer();
-
-    @Test
-    void renderConnect()
-    {
-        final ConnectRequestEncoder requestEncoder = new ConnectRequestEncoder();
-        requestEncoder.wrapAndApplyHeader(buffer, 0, headerEncoder)
-            .correlationId(88)
-            .responseStreamId(42)
-            .version(-10)
-            .responseChannel("call me maybe");
-
-        renderer.append(sb, ArchiveEventCode.CMD_IN_CONNECT.toEventCodeId(), buffer, 0, buffer.capacity());
-
-        assertEquals(
-            "correlationId=88 responseStreamId=42 version=-10 responseChannel=call me maybe",
-            sb.toString());
-    }
 
     @Test
     void renderCloseSession()

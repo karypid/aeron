@@ -76,15 +76,15 @@ class ArchiveEventLoggerCborImplTest
         Arrays.fill(subRange, (byte)0xAA);
         final UnsafeBuffer buffer = new UnsafeBuffer(backing);
 
-        logger.logControlRequest(ArchiveEventCode.CMD_IN_CONNECT, buffer, 100, 16);
+        logger.logControlRequest(ArchiveEventCode.CMD_IN_AUTH_CONNECT, buffer, 100, 16);
 
         drain();
 
         final InOrder inOrder = Mockito.inOrder(mockLoggingCallback);
         inOrder.verify(mockLoggingCallback).onHeader(
             eq(EventCodeType.ARCHIVE.getTypeCode()),
-            eq(ArchiveEventCode.CMD_IN_CONNECT.id()),
-            eq(ArchiveEventCode.CMD_IN_CONNECT.name()),
+            eq(ArchiveEventCode.CMD_IN_AUTH_CONNECT.id()),
+            eq(ArchiveEventCode.CMD_IN_AUTH_CONNECT.name()),
             anyLong());
         inOrder.verify(mockLoggingCallback).onValue("buffer", AERON_ARCHIVE_ADMIN_TAG, new UnsafeBuffer(subRange));
         inOrder.verify(mockLoggingCallback).onFooter(false);
@@ -97,7 +97,7 @@ class ArchiveEventLoggerCborImplTest
         Arrays.fill(backing, (byte)0x11);
         final UnsafeBuffer buffer = new UnsafeBuffer(backing);
 
-        logger.logControlRequest(ArchiveEventCode.CMD_IN_CONNECT, buffer, 0, backing.length);
+        logger.logControlRequest(ArchiveEventCode.CMD_IN_AUTH_CONNECT, buffer, 0, backing.length);
 
         drain();
 

@@ -31,6 +31,12 @@ configurable via the new `aeron.thread.naming` system property:
 ** `new` - use new standardized names (e.g. `aeron-md-snd`, `aeron-md-rcv`, `aeron-md-cnd`)
 --
 
+* **Breaking:** **[Archive]** Remove support for `ConnectRequest` (`templateId = 2`) message which allowed
+unauthenticated login to Archive. This message was not used by official Archive clients used since
+<<1.24.0 (2019-11-24)>>.
++
+NOTE: The corresponding logging event `CMD_IN_CONNECT` was also removed.
+
 === Changelog
 
 * **[Client/Java]** Remove `Image#controlledPeek` APIs.

@@ -17,7 +17,17 @@ package io.aeron.archive;
 
 import io.aeron.Image;
 import io.aeron.Subscription;
-import io.aeron.archive.codecs.*;
+import io.aeron.archive.codecs.AuthConnectRequestEncoder;
+import io.aeron.archive.codecs.BoundedReplayRequestDecoder;
+import io.aeron.archive.codecs.BoundedReplayRequestEncoder;
+import io.aeron.archive.codecs.CloseSessionRequestEncoder;
+import io.aeron.archive.codecs.MessageHeaderDecoder;
+import io.aeron.archive.codecs.MessageHeaderEncoder;
+import io.aeron.archive.codecs.ReplayRequestDecoder;
+import io.aeron.archive.codecs.ReplayRequestEncoder;
+import io.aeron.archive.codecs.ReplayTokenRequestEncoder;
+import io.aeron.archive.codecs.ReplicateRequest2Decoder;
+import io.aeron.archive.codecs.ReplicateRequest2Encoder;
 import io.aeron.logbuffer.Header;
 import io.aeron.security.AuthorisationService;
 import org.agrona.ExpandableArrayBuffer;
@@ -27,7 +37,15 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ControlSessionAdapterTest
 {
@@ -282,7 +300,7 @@ class ControlSessionAdapterTest
     {
         final MutableDirectBuffer buffer = new ExpandableArrayBuffer();
         final MessageHeaderEncoder headerEncoder2 = new MessageHeaderEncoder();
-        final ConnectRequestEncoder connectRequestEncoder = new ConnectRequestEncoder();
+        final AuthConnectRequestEncoder connectRequestEncoder = new AuthConnectRequestEncoder();
         connectRequestEncoder.wrapAndApplyHeader(buffer, 0, headerEncoder2);
         connectRequestEncoder
             .correlationId(100)

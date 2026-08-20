@@ -198,7 +198,7 @@ class ControlSessionAdapterV6Test
     {
         final MutableDirectBuffer buffer = new ExpandableArrayBuffer();
         final MessageHeaderEncoder headerEncoder2 = new MessageHeaderEncoder();
-        final ConnectRequestEncoder connectRequestEncoder = new ConnectRequestEncoder();
+        final AuthConnectRequestEncoder connectRequestEncoder = new AuthConnectRequestEncoder();
         connectRequestEncoder.wrapAndApplyHeader(buffer, 0, headerEncoder2);
         connectRequestEncoder
             .correlationId(100)

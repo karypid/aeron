@@ -30,7 +30,6 @@ import io.aeron.archive.codecs.BooleanType;
 import io.aeron.archive.codecs.BoundedReplayRequestDecoder;
 import io.aeron.archive.codecs.ChallengeResponseDecoder;
 import io.aeron.archive.codecs.CloseSessionRequestDecoder;
-import io.aeron.archive.codecs.ConnectRequestDecoder;
 import io.aeron.archive.codecs.DeleteDetachedSegmentsRequestDecoder;
 import io.aeron.archive.codecs.DetachSegmentsRequestDecoder;
 import io.aeron.archive.codecs.ExtendRecordingRequest2Decoder;
@@ -142,28 +141,6 @@ class ControlSessionAdapter implements FragmentHandler
         final int templateId = headerDecoder.templateId();
         switch (templateId)
         {
-            case ConnectRequestDecoder.TEMPLATE_ID:
-            {
-                final ConnectRequestDecoder decoder = decoders.connectRequest;
-                decoder.wrap(
-                    buffer,
-                    offset + MessageHeaderDecoder.ENCODED_LENGTH,
-                    headerDecoder.blockLength(),
-                    headerDecoder.version());
-
-                final ControlSession session = conductor.newControlSession(
-                    image,
-                    decoder.correlationId(),
-                    decoder.responseStreamId(),
-                    decoder.version(),
-                    decoder.responseChannel(),
-                    ArrayUtil.EMPTY_BYTE_ARRAY,
-                    "",
-                    this);
-                controlSessionByIdMap.put(session.sessionId(), new SessionInfo(image, session));
-                break;
-            }
-
             case CloseSessionRequestDecoder.TEMPLATE_ID:
             {
                 final CloseSessionRequestDecoder decoder = decoders.closeSessionRequest;

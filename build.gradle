@@ -675,7 +675,7 @@ project(':aeron-archive') {
     }
 
     LoggingTest.configureLoggingTests(project, 'ArchiveEventEnablementTest', 'aeron.event.archive.log',
-        'aeron.event.archive.log.disable', 'CATALOG_RESIZE,CMD_IN_CONNECT')
+        'aeron.event.archive.log.disable', 'CATALOG_RESIZE,CMD_IN_AUTH_CONNECT')
 
     def codecsFile = 'src/main/resources/archive/aeron-archive-codecs.xml'
     def markCodecsFile = 'src/main/resources/archive/aeron-archive-mark-codecs.xml'

@@ -29,10 +29,6 @@ import java.util.function.ToIntFunction;
 public enum ArchiveEventCode implements EventCode
 {
     /**
-     * Archive logging event for {@code connect} command.
-     */
-    CMD_IN_CONNECT(1, ConnectRequestDecoder.TEMPLATE_ID),
-    /**
      * Archive logging event for {@code close-session} command.
      */
     CMD_IN_CLOSE_SESSION(2, CloseSessionRequestDecoder.TEMPLATE_ID),
@@ -367,5 +363,4 @@ public enum ArchiveEventCode implements EventCode
     {
         return get(eventCodeId - (EVENT_CODE_TYPE << 16));
     }
-
 }

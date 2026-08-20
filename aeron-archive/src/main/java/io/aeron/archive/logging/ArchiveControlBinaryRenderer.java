@@ -27,7 +27,6 @@ import static io.aeron.logging.BinaryRenderer.renderTruncated;
  */
 public class ArchiveControlBinaryRenderer implements BinaryRenderer
 {
-    private final ConnectRequestDecoder connectRequestDecoder = new ConnectRequestDecoder();
     private final CloseSessionRequestDecoder closeSessionRequestDecoder = new CloseSessionRequestDecoder();
     private final StartRecordingRequestDecoder startRecordingRequestDecoder =
         new StartRecordingRequestDecoder();
@@ -88,46 +87,17 @@ public class ArchiveControlBinaryRenderer implements BinaryRenderer
     private final RecordingSignalEventDecoder recordingSignalEventDecoder = new RecordingSignalEventDecoder();
     private final MessageHeaderDecoder headerDecoder = new MessageHeaderDecoder();
 
-    private static final int[] MSG_TYPE_IDS = {
-        ArchiveEventCode.CMD_IN_CONNECT.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_CLOSE_SESSION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_START_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_REPLAY.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_REPLAY.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_LIST_RECORDINGS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_LIST_RECORDINGS_FOR_URI.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_LIST_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_EXTEND_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_RECORDING_POSITION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_TRUNCATE_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_RECORDING_SUBSCRIPTION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_POSITION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_FIND_LAST_MATCHING_RECORD.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_LIST_RECORDING_SUBSCRIPTIONS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_START_BOUNDED_REPLAY.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_ALL_REPLAYS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_REPLICATE.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_REPLICATION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_START_POSITION.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_DETACH_SEGMENTS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_DELETE_DETACHED_SEGMENTS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_PURGE_SEGMENTS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_ATTACH_SEGMENTS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_MIGRATE_SEGMENTS.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_AUTH_CONNECT.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_KEEP_ALIVE.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_TAGGED_REPLICATE.toEventCodeId(),
-        ArchiveEventCode.CMD_OUT_RESPONSE.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_START_RECORDING2.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_EXTEND_RECORDING2.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_STOP_RECORDING_BY_IDENTITY.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_PURGE_RECORDING.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_REPLICATE2.toEventCodeId(),
-        ArchiveEventCode.RECORDING_SIGNAL.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_REQUEST_REPLAY_TOKEN.toEventCodeId(),
-        ArchiveEventCode.CMD_IN_MAX_RECORDED_POSITION.toEventCodeId()
-    };
+    private static final int[] MSG_TYPE_IDS;
+
+    static
+    {
+        final ArchiveEventCode[] values = ArchiveEventCode.values();
+        MSG_TYPE_IDS = new int[values.length];
+        for (int i = 0; i < MSG_TYPE_IDS.length; i++)
+        {
+            MSG_TYPE_IDS[i] = values[i].toEventCodeId();
+        }
+    }
 
     /**
      * Default constructor.
@@ -176,18 +146,6 @@ public class ArchiveControlBinaryRenderer implements BinaryRenderer
 
         switch (code)
         {
-            case CMD_IN_CONNECT:
-                if (length < ENCODED_LENGTH + ConnectRequestDecoder.BLOCK_LENGTH)
-                {
-                    renderTruncated(sb);
-                    break;
-                }
-
-                connectRequestDecoder.wrap(
-                    buffer, payloadOffset, blockLength, schemaVersion);
-                renderConnect(sb, length);
-                break;
-
             case CMD_IN_CLOSE_SESSION:
                 if (length < ENCODED_LENGTH + CloseSessionRequestDecoder.BLOCK_LENGTH)
                 {
@@ -672,24 +630,6 @@ public class ArchiveControlBinaryRenderer implements BinaryRenderer
                 sb.append("unknown command");
                 break;
         }
-    }
-
-    private void renderConnect(final StringBuilder sb, final int capacity)
-    {
-        sb.append("correlationId=").append(connectRequestDecoder.correlationId())
-            .append(" responseStreamId=").append(connectRequestDecoder.responseStreamId())
-            .append(" version=").append(connectRequestDecoder.version())
-            .append(" responseChannel=");
-
-        if (cannotFit(
-            capacity,
-            connectRequestDecoder.limit() + ConnectRequestDecoder.responseChannelHeaderLength(),
-            connectRequestDecoder.responseChannelLength()))
-        {
-            renderTruncated(sb);
-            return;
-        }
-        connectRequestDecoder.getResponseChannel(sb);
     }
 
     private void renderAuthConnect(final StringBuilder sb, final int capacity)
