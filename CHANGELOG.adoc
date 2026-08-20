@@ -93,7 +93,7 @@ it. (https://github.com/aeron-io/aeron/pull/2119[#2119])
 generic error. (https://github.com/aeron-io/aeron/pull/2108[#2108])
 * **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.6.0[Agrona 2.6.0].
 * **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.40.0[SBE 1.40.0].
-* **[Java]** Upgrade to `Gradle` 9.7.0.
+* **[Java]** Upgrade to `Gradle` 9.7.1.
 * **[Java]** Upgrade to `JUnit` 6.1.3.
 * **[Java]** Upgrade to `Shadow` 9.6.1.
 * **[Java]** Upgrade to `Versions` 0.61.0.
