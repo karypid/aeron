@@ -27,7 +27,7 @@ import static org.agrona.BitUtil.CACHE_LINE_LENGTH;
  * Flyweight for Data Frame header of a message fragment.
  * <p>
  * <a target="_blank"
- *    href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#data-frame">Data Frame</a>
+ * href="https://github.com/aeron-io/aeron/wiki/Transport-Protocol-Specification#data-frame">Data Frame</a>
  * wiki page.
  */
 public class DataHeaderFlyweight extends HeaderFlyweight
@@ -155,7 +155,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
      */
     public static boolean isHeartbeat(final UnsafeBuffer packet, final int length)
     {
-        return length == HEADER_LENGTH && packet.getInt(0) == 0;
+        return HEADER_LENGTH == length && 0 == packet.getInt(FRAME_LENGTH_FIELD_OFFSET, LITTLE_ENDIAN);
     }
 
     /**

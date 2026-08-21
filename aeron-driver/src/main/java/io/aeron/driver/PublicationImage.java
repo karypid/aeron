@@ -655,16 +655,16 @@ public final class PublicationImage
         }
 
         final int termLength = termLengthMask + 1;
-        final int endOffset = validatePacket(termOffset, buffer, length, termLength);
-        if (endOffset < 0)
+        final int payloadLength = validatePacket(termOffset, buffer, length, termLength);
+        if (payloadLength < 0)
         {
             invalidPackets.increment();
             return 0;
         }
 
-        final boolean isHeartbeat = 0 == endOffset;
+        final boolean isHeartbeat = 0 == payloadLength;
         final long packetPosition = computePosition(termId, termOffset, positionBitsToShift, initialTermId);
-        final long proposedPosition = packetPosition + endOffset;
+        final long proposedPosition = packetPosition + payloadLength;
 
         if (!isFlowControlOverRun(proposedPosition))
         {
@@ -732,12 +732,12 @@ public final class PublicationImage
     private int validatePacket(
         final int termOffset, final UnsafeBuffer buffer, final int length, final int termLength)
     {
-        if (termOffset < 0 || termOffset > termLength || !FrameDescriptor.isFrameAligned(termOffset))
+        if (termOffset < 0 || termOffset >= termLength || !FrameDescriptor.isFrameAligned(termOffset))
         {
             return -1;
         }
 
-        if (DataHeaderFlyweight.HEADER_LENGTH == length && 0 == FrameDescriptor.frameLength(buffer, 0))
+        if (DataHeaderFlyweight.isHeartbeat(buffer, length))
         {
             return 0; // heartbeat
         }
