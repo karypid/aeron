@@ -775,10 +775,11 @@ public final class PublicationImage
 
             if (isReceiveTimestampEnabled &&
                 DataHeaderFlyweight.HDR_TYPE_DATA == frameType &&
-                0 != (FrameDescriptor.frameFlags(buffer, offset) & DataHeaderFlyweight.BEGIN_FLAG))
+                0 != (FrameDescriptor.frameFlags(buffer, offset) & DataHeaderFlyweight.BEGIN_FLAG) &&
+                (offset + frameLength) <= length)
             {
                 final int timestampOffset = receiveTimestampOffset;
-                if ((timestampOffset + SIZE_OF_LONG) <= frameLength && (offset + frameLength) <= length)
+                if ((timestampOffset + SIZE_OF_LONG) <= frameLength)
                 {
                     if (0 == receiveTimestamp)
                     {
