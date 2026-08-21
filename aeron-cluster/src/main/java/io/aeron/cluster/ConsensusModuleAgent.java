@@ -284,6 +284,12 @@ final class ConsensusModuleAgent
     {
         if (!aeron.isClosed())
         {
+            final long logPosition = commitPosition.get();
+            if (0 < ctx.serviceCount())
+            {
+                serviceProxy.terminationPosition(logPosition, false, ctx.countedErrorHandler());
+            }
+
             aeron.removeUnavailableCounterHandler(unavailableCounterHandlerRegistrationId);
 
             final CountedErrorHandler errorHandler = ctx.countedErrorHandler();
@@ -2498,7 +2504,7 @@ final class ConsensusModuleAgent
                     state(ConsensusModule.State.TERMINATING, "terminationPosition=" + terminationPosition);
                     if (serviceCount > 0)
                     {
-                        serviceProxy.terminationPosition(terminationPosition, ctx.countedErrorHandler());
+                        serviceProxy.terminationPosition(terminationPosition, true, ctx.countedErrorHandler());
                     }
                     else
                     {
@@ -2611,7 +2617,7 @@ final class ConsensusModuleAgent
                     terminationLeadershipTermId = leadershipTermId;
                     if (serviceCount > 0)
                     {
-                        serviceProxy.terminationPosition(terminationPosition, errorHandler);
+                        serviceProxy.terminationPosition(terminationPosition, true, errorHandler);
                     }
                     else
                     {
@@ -3119,7 +3125,7 @@ final class ConsensusModuleAgent
         {
             if (serviceCount > 0)
             {
-                serviceProxy.terminationPosition(terminationPosition, ctx.countedErrorHandler());
+                serviceProxy.terminationPosition(terminationPosition, true, ctx.countedErrorHandler());
             }
             else
             {
@@ -3292,7 +3298,7 @@ final class ConsensusModuleAgent
         aeron.removeUnavailableCounterHandler(unavailableCounterHandlerRegistrationId);
         if (serviceCount > 0)
         {
-            serviceProxy.terminationPosition(0, ctx.countedErrorHandler());
+            serviceProxy.terminationPosition(0, true, ctx.countedErrorHandler());
         }
         tryStopLogRecording();
         state(ConsensusModule.State.CLOSED, terminationReason);
