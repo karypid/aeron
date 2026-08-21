@@ -791,7 +791,7 @@ public final class PublicationImage
 
             offset += (int)alignedFrameLength;
         }
-        while (length - offset >= DataHeaderFlyweight.HEADER_LENGTH);
+        while (offset <= length - DataHeaderFlyweight.HEADER_LENGTH);
 
         if (length != offset &&
             (offset < length || DataHeaderFlyweight.HDR_TYPE_PAD != frameType))
