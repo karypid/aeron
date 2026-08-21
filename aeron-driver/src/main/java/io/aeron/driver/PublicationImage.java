@@ -655,7 +655,7 @@ public final class PublicationImage
         }
 
         final int termLength = termLengthMask + 1;
-        final int payloadLength = validatePacket(termOffset, buffer, length, termLength);
+        final int payloadLength = validatePacket(termLength, termOffset, buffer, length);
         if (payloadLength < 0)
         {
             invalidPackets.increment();
@@ -730,7 +730,7 @@ public final class PublicationImage
     }
 
     private int validatePacket(
-        final int termOffset, final UnsafeBuffer buffer, final int length, final int termLength)
+        final int termLength, final int termOffset, final UnsafeBuffer buffer, final int length)
     {
         if (termOffset < 0 || termOffset >= termLength || !FrameDescriptor.isFrameAligned(termOffset))
         {
