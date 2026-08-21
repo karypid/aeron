@@ -774,6 +774,7 @@ public final class PublicationImage
             // we assume that `sessionId`, `streamId`, `termId`, `version`, `flags` are all sane
 
             if (isReceiveTimestampEnabled &&
+                DataHeaderFlyweight.HDR_TYPE_DATA == frameType &&
                 0 != (FrameDescriptor.frameFlags(buffer, offset) & DataHeaderFlyweight.BEGIN_FLAG))
             {
                 final int timestampOffset = receiveTimestampOffset;

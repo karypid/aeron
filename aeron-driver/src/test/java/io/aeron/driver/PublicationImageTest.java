@@ -537,6 +537,7 @@ class PublicationImageTest
         offset += writeFrame(offset, termOffset + offset, termId, 64, (short)0, HDR_TYPE_DATA, 0);
         offset += writeFrame(offset, termOffset + offset, termId, 96, (short)0, HDR_TYPE_DATA, 0);
         offset += writeFrame(offset, termOffset + offset, termId, 32, END_FLAG, HDR_TYPE_DATA, 0);
+        offset += writeFrame(offset, termOffset + offset, termId, 50, BEGIN_AND_END_FLAGS, HDR_TYPE_PAD, 0);
         offset += writeFrame(offset, termOffset + offset, termId, 100, BEGIN_AND_END_FLAGS, HDR_TYPE_DATA, 0);
         offset += writeFrame(offset, termOffset + offset, termId, 200, BEGIN_END_AND_EOS_FLAGS, HDR_TYPE_PAD, 0);
 
@@ -590,8 +591,9 @@ class PublicationImageTest
         assertEquals(0, buffer.getLong(160 + timestampOffset, LITTLE_ENDIAN));
         assertEquals(0, buffer.getLong(256 + timestampOffset, LITTLE_ENDIAN));
         assertEquals(0, buffer.getLong(384 + timestampOffset, LITTLE_ENDIAN));
-        assertEquals(receiveTimestamp, buffer.getLong(448 + timestampOffset, LITTLE_ENDIAN));
-        assertEquals(receiveTimestamp, buffer.getLong(608 + timestampOffset, LITTLE_ENDIAN));
+        assertEquals(0, buffer.getLong(448 + timestampOffset, LITTLE_ENDIAN));
+        assertEquals(receiveTimestamp, buffer.getLong(544 + timestampOffset, LITTLE_ENDIAN));
+        assertEquals(0, buffer.getLong(704 + timestampOffset, LITTLE_ENDIAN));
     }
 
     @Test
@@ -660,7 +662,7 @@ class PublicationImageTest
         assertEquals(0, buffer.getLong(256 + timestampOffset, LITTLE_ENDIAN));
         assertEquals(0, buffer.getLong(384 + timestampOffset, LITTLE_ENDIAN));
         assertEquals(receiveTimestamp, buffer.getLong(448 + timestampOffset, LITTLE_ENDIAN));
-        assertEquals(receiveTimestamp, buffer.getLong(608 + timestampOffset, LITTLE_ENDIAN));
+        assertEquals(0, buffer.getLong(608 + timestampOffset, LITTLE_ENDIAN));
     }
 
     private int writeFrame(
