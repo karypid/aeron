@@ -1538,11 +1538,6 @@ TEST_F(PublicationImageTest, shouldNotSetTimestampsIfEndpointIsNull)
     image.cached_clock = &clock;
     aeron_receive_destination_t destination;
     destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP | AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP;
-    aeron_receive_channel_endpoint_t endpoint;
-    aeron_udp_channel_t udp_channel;
-    udp_channel.channel_rcv_timestamp_offset = 0;
-    udp_channel.media_rcv_timestamp_offset = AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET;
-    endpoint.conductor_fields.udp_channel = &udp_channel;
     image.endpoint = nullptr;
 
     int32_t term_id = 1;
