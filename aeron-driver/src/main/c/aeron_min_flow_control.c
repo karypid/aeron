@@ -304,7 +304,7 @@ void aeron_min_flow_control_strategy_on_error(
     int64_t now_ns)
 {
     aeron_min_flow_control_strategy_state_t *strategy_state = (aeron_min_flow_control_strategy_state_t *)state;
-    aeron_error_t *error_header = (aeron_error_t *)error;
+    aeron_error_header_t *error_header = (aeron_error_header_t *)error;
 
     for (size_t i = 0; i < strategy_state->receivers.length; i++)
     {

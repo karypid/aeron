@@ -160,6 +160,7 @@ typedef struct aeron_publication_image_stct
     volatile int64_t *loss_gap_fills_counter;
     volatile int64_t *mapped_bytes_counter;
     volatile int64_t *publication_images_revoked_counter;
+    volatile int64_t *invalid_packets_counter;
 }
 aeron_publication_image_t;
 
@@ -207,7 +208,8 @@ int aeron_publication_image_insert_packet(
     int32_t term_offset,
     const uint8_t *buffer,
     size_t length,
-    struct sockaddr_storage *addr);
+    struct sockaddr_storage *addr,
+    struct timespec *media_receive_timestamp);
 
 int aeron_publication_image_on_rttm(
     aeron_publication_image_t *image, aeron_rttm_header_t *header, struct sockaddr_storage *addr);
@@ -234,7 +236,7 @@ void aeron_publication_image_invalidate(aeron_publication_image_t *image, int32_
 
 inline bool aeron_publication_image_is_heartbeat(const uint8_t *buffer, size_t length)
 {
-    return length == AERON_DATA_HEADER_LENGTH && 0 == ((aeron_frame_header_t *)buffer)->frame_length;
+    return AERON_DATA_HEADER_LENGTH == length && 0 == ((aeron_frame_header_t *)buffer)->frame_length;
 }
 
 inline bool aeron_publication_image_is_end_of_stream(const uint8_t *buffer, size_t length)

@@ -15,13 +15,14 @@
  */
 
 #include <inttypes.h>
-#include "util/aeron_netutil.h"
-#include "util/aeron_arrayutil.h"
-#include "concurrent/aeron_term_rebuilder.h"
 #include "aeron_publication_image.h"
 #include "aeron_driver_receiver_proxy.h"
 #include "aeron_driver_conductor.h"
+#include "concurrent/aeron_term_rebuilder.h"
 #include "concurrent/aeron_term_gap_filler.h"
+#include "media/aeron_timestamps.h"
+#include "util/aeron_arrayutil.h"
+#include "util/aeron_netutil.h"
 #include "util/aeron_parse_util.h"
 
 #define AERON_PUBLICATION_RESPONSE_NULL_RESPONSE_SESSION_ID INT64_C(0xF000000000000000)
@@ -355,6 +356,8 @@ int aeron_publication_image_create(
         system_counters, AERON_SYSTEM_COUNTER_LOSS_GAP_FILLS);
     _image->publication_images_revoked_counter = aeron_system_counter_addr(
         system_counters, AERON_SYSTEM_COUNTER_PUBLICATION_IMAGES_REVOKED);
+    _image->invalid_packets_counter = aeron_system_counter_addr(
+        system_counters, AERON_SYSTEM_COUNTER_INVALID_PACKETS);
 
     const int64_t initial_position = aeron_logbuffer_compute_position(
         active_term_id, initial_term_offset, _image->position_bits_to_shift, initial_term_id);
@@ -640,6 +643,97 @@ void aeron_publication_image_add_connection_if_unknown(
         image, destination, src_addr, aeron_clock_cached_nano_time(image->cached_clock));
 }
 
+int32_t aeron_publication_image_validate_packet(
+    aeron_publication_image_t *image,
+    aeron_receive_destination_t *destination,
+    int32_t term_length,
+    int32_t term_offset,
+    const uint8_t *buffer,
+    size_t length,
+    struct timespec *media_receive_timestamp)
+{
+    if (term_offset < 0 || term_offset >= term_length || !AERON_IS_ALIGNED(term_offset, AERON_FRAME_ALIGNMENT))
+    {
+        return -1;
+    }
+
+    if (aeron_publication_image_is_heartbeat(buffer, length))
+    {
+        return 0;
+    }
+
+    int32_t offset = 0;
+    int64_t next_offset = term_offset;
+    int16_t frame_type = -1;
+    struct timespec receive_timestamp =
+    {
+        .tv_sec = -1,
+        .tv_nsec = 0
+    };
+    do
+    {
+        aeron_data_header_t *frame = (aeron_data_header_t *)(buffer + offset);
+        if (frame->frame_header.frame_length <= 0)
+        {
+            break;
+        }
+
+        frame_type = frame->frame_header.type;
+        if (0 != (frame_type & 0xFFFE))
+        {
+            break; // only AERON_HDR_TYPE_DATA/AERON_HDR_TYPE_PAD expected here
+        }
+
+        if (frame->term_offset != next_offset)
+        {
+            break;
+        }
+
+        int64_t aligned_frame_length = AERON_ALIGN((int64_t)frame->frame_header.frame_length, AERON_FRAME_ALIGNMENT);
+        next_offset += aligned_frame_length;
+        if (next_offset > term_length)
+        {
+            break;
+        }
+
+        if (AERON_HDR_TYPE_DATA == frame_type &&
+            AERON_DATA_HEADER_BEGIN_FLAG == (frame->frame_header.flags & AERON_DATA_HEADER_BEGIN_FLAG) &&
+            (size_t)offset + (size_t)frame->frame_header.frame_length <= length &&
+            NULL != image->endpoint)
+        {
+            if (AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP & destination->transport.timestamp_flags)
+            {
+                aeron_timestamps_set_timestamp(
+                    media_receive_timestamp,
+                    image->endpoint->conductor_fields.udp_channel->media_rcv_timestamp_offset,
+                    frame);
+            }
+
+            if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP & destination->transport.timestamp_flags)
+            {
+                if (-1 == receive_timestamp.tv_sec)
+                {
+                    aeron_clock_gettime_realtime(&receive_timestamp);
+                }
+                aeron_timestamps_set_timestamp(
+                    &receive_timestamp,
+                    image->endpoint->conductor_fields.udp_channel->channel_rcv_timestamp_offset,
+                    frame);
+            }
+        }
+
+        offset += (int32_t)aligned_frame_length;
+    }
+    while ((size_t)offset <= length - AERON_DATA_HEADER_LENGTH);
+
+    if (length != (size_t)offset && ((size_t)offset < length || AERON_HDR_TYPE_PAD != frame_type))
+    {
+        return -1; // packet is invalid if it contains trailing bytes or incomplete DATA frames
+    }
+
+    return offset;
+}
+
 int aeron_publication_image_insert_packet(
     aeron_publication_image_t *image,
     aeron_receive_destination_t *destination,
@@ -647,7 +741,8 @@ int aeron_publication_image_insert_packet(
     int32_t term_offset,
     const uint8_t *buffer,
     size_t length,
-    struct sockaddr_storage *addr)
+    struct sockaddr_storage *addr,
+    struct timespec *media_receive_timestamp)
 {
     if (aeron_sub_wrap_i32(term_id, image->initial_term_id) < 0)
     {
@@ -659,10 +754,19 @@ int aeron_publication_image_insert_packet(
         return 0;
     }
 
-    const bool is_heartbeat = aeron_publication_image_is_heartbeat(buffer, length);
+    int32_t term_length = image->term_length_mask + 1;
+    int32_t payload_length = aeron_publication_image_validate_packet(
+        image, destination, term_length, term_offset, buffer, length, media_receive_timestamp);
+    if (payload_length < 0)
+    {
+        aeron_counter_increment_release(image->invalid_packets_counter);
+        return 0;
+    }
+
+    const bool is_heartbeat = 0 == payload_length;
     const int64_t packet_position = aeron_logbuffer_compute_position(
         term_id, term_offset, image->position_bits_to_shift, image->initial_term_id);
-    const int64_t proposed_position = is_heartbeat ? packet_position : packet_position + (int64_t)length;
+    const int64_t proposed_position = packet_position + payload_length;
 
     if (!aeron_publication_image_is_flow_control_over_run(image, proposed_position))
     {
@@ -670,7 +774,7 @@ int aeron_publication_image_insert_packet(
 
         if (is_heartbeat)
         {
-            const int64_t potential_window_bottom = image->last_sm_position - (image->term_length_mask + 1);
+            const int64_t potential_window_bottom = image->last_sm_position - term_length;
             const int64_t publication_window_bottom = potential_window_bottom < 0 ? 0 : potential_window_bottom;
 
             if (packet_position >= publication_window_bottom)

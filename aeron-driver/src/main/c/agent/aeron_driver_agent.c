@@ -2055,8 +2055,8 @@ const char *aeron_driver_agent_dissect_frame(const void *message, size_t length)
 
         case AERON_HDR_TYPE_ERR:
         {
-            aeron_error_t *err = (aeron_error_t *)message;
-            const char *error_msg = (const char *)message + sizeof(aeron_error_t);
+            aeron_error_header_t *err = (aeron_error_header_t *)message;
+            const char *error_msg = (const char *)message + sizeof(aeron_error_header_t);
 
             snprintf(
                 buffer,

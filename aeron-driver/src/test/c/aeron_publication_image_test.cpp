@@ -50,7 +50,6 @@ public:
     }
 };
 
-
 class ZeroDelayFeedbackGeneratorTest : public ReceiverTestBase, public testing::TestWithParam<bool>
 {
 public:
@@ -253,7 +252,7 @@ TEST_F(PublicationImageTest, shouldSendControlMessagesToAllDestinations)
     message->term_id = 0;
     message->term_offset = 0;
 
-    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, 64, &addr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, 64, &addr, nullptr);
 
     aeron_publication_image_schedule_status_message(image, 1, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, 2000000000);
@@ -331,12 +330,12 @@ TEST_F(PublicationImageTest, shouldHandleEosAcrossDestinations)
     AERON_GET_ACQUIRE(is_eos, image->is_end_of_stream);
     ASSERT_EQ(false, is_eos);
 
-    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, AERON_DATA_HEADER_LENGTH, &addr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, AERON_DATA_HEADER_LENGTH, &addr, nullptr);
 
     AERON_GET_ACQUIRE(is_eos, image->is_end_of_stream);
     ASSERT_EQ(false, is_eos);
 
-    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, AERON_DATA_HEADER_LENGTH, &addr);
+    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, AERON_DATA_HEADER_LENGTH, &addr, nullptr);
 
     AERON_GET_ACQUIRE(is_eos, image->is_end_of_stream);
     ASSERT_EQ(true, is_eos);
@@ -404,15 +403,15 @@ TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHav
     message->term_id = 0;
     message->term_offset = 0;
 
-    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, message_length, &addr);
-    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, message_length, &addr);
+    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, message_length, &addr, nullptr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, message_length, &addr, nullptr);
 
     aeron_clock_update_cached_nano_time(m_context->receiver_cached_clock, t1_ns);
 
     auto next_offset = (int32_t) message_length;
     message->term_offset = next_offset;
 
-    aeron_publication_image_insert_packet(image, dest_2, 0, next_offset, data, message_length, &addr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, next_offset, data, message_length, &addr, nullptr);
 
     aeron_publication_image_schedule_status_message(image, 1, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, t1_ns);
@@ -491,13 +490,13 @@ TEST_F(PublicationImageTest, shouldTrackActiveTransportAccountBasedOnFrames)
     message->term_id = 0;
     message->term_offset = 0;
 
-    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, 64, &addr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, 64, &addr, nullptr);
     aeron_publication_image_schedule_status_message(image, 0, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, t0_ns);
 
     ASSERT_EQ(1, image->log_meta_data->active_transport_count);
 
-    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, 64, &addr);
+    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, 64, &addr, nullptr);
     aeron_publication_image_schedule_status_message(image, 0, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, t0_ns);
 
@@ -572,14 +571,14 @@ TEST_F(PublicationImageTest, shouldTrackUnderRunningTransportsWithLastSmAndRecei
     message->term_id = 0;
     message->term_offset = 0;
 
-    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, message_length, &addr);
+    aeron_publication_image_insert_packet(image, dest_2, 0, 0, data, message_length, &addr, nullptr);
 
     aeron_publication_image_schedule_status_message(image, message_length, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, t1_ns);
 
     ASSERT_EQ(1, bindings_state_dest1->sm_count);
 
-    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, message_length, &addr);
+    aeron_publication_image_insert_packet(image, dest_1, 0, 0, data, message_length, &addr, nullptr);
 
     aeron_publication_image_schedule_status_message(image, message_length, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image, t1_ns);
@@ -869,4 +868,809 @@ TEST_F(PublicationImageTest, shouldReportUniqueLoss)
     endpoint->transport_bindings->poller_remove_func(&m_receiver.poller, &dest->transport);
     endpoint->transport_bindings->close_func(&dest->transport);
     aeron_receive_destination_delete(dest, &m_counters_manager);
+}
+
+class TermOffsetValidationTest : public ReceiverTestBase, public testing::TestWithParam<int32_t>
+{
+public:
+    void SetUp() final
+    {
+        DoSetUp();
+    }
+
+    void TearDown() final
+    {
+        DoTearDown();
+    }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    TermOffsetValidationTests,
+    TermOffsetValidationTest,
+    testing::Values(-100, -32, 64 * 1024, 2500)
+);
+
+TEST_P(TermOffsetValidationTest, shouldRejectPacketIfFirstFrameHasWrongTermOffset)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = GetParam();
+
+    auto *frame = reinterpret_cast<aeron_data_header_t *>(&data);
+    frame->frame_header.frame_length = 64;
+    frame->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame->frame_header.flags = 0;
+    frame->term_offset = term_offset;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 64, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldRejectPacketIfItContainsTrailingBytes)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 0;
+
+    auto *frame = reinterpret_cast<aeron_data_header_t *>(&data);
+    frame->frame_header.frame_length = 64;
+    frame->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame->frame_header.flags = 0;
+    frame->term_offset = term_offset;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+class FrameTypeValidationTest : public ReceiverTestBase, public testing::TestWithParam<int16_t>
+{
+public:
+    void SetUp() final
+    {
+        DoSetUp();
+    }
+
+    void TearDown() final
+    {
+        DoTearDown();
+    }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    FrameTypeValidationTests,
+    FrameTypeValidationTest,
+    testing::Values(
+        -500,
+        AERON_HDR_TYPE_NAK,
+        AERON_HDR_TYPE_SM,
+        AERON_HDR_TYPE_ERR,
+        AERON_HDR_TYPE_SETUP,
+        AERON_HDR_TYPE_RTTM,
+        AERON_HDR_TYPE_RES,
+        AERON_HDR_TYPE_ATS_DATA,
+        AERON_HDR_TYPE_ATS_SETUP,
+        AERON_HDR_TYPE_ATS_SM,
+        AERON_HDR_TYPE_RSP_SETUP,
+        AERON_HDR_TYPE_EXT,
+        INT16_MAX,
+        INT16_MIN)
+);
+
+TEST_P(FrameTypeValidationTest, shouldRejectPacketWithFramesHavingWrongFrameType)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 128;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = GetParam();
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + frame1->frame_header.frame_length;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldRejectPacketIfFrameOffsetIsIncorrect)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 128;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + 19;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldRejectPacketIfFrameLengthIsNegative)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 128;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = -64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + frame1->frame_header.frame_length;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldRejectPacketIfFrameDoesNotFitIntoThePacket)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 128;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = 2048;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + frame1->frame_header.frame_length;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldRejectPacketIfFrameLengthPlussOffsetExceedsTermLengthBoundary)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    int64_t invalid_packets = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.invalidation_reason = nullptr;
+    image.term_length_mask = (64 * 1024) - 1;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = image.term_length_mask + 1 - 96;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + frame1->frame_header.frame_length;
+
+    EXPECT_EQ(0, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(1, invalid_packets);
+}
+
+TEST_F(PublicationImageTest, shouldAllowTrailingPaddingFrameToExceedPacketLength)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 0;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[frame1->frame_header.frame_length]);
+    frame2->frame_header.frame_length = 4096;
+    frame2->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = 0;
+    frame2->term_offset = term_offset + frame1->frame_header.frame_length;
+
+    EXPECT_EQ(128, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 128, &addr, nullptr));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+}
+
+TEST_F(PublicationImageTest, shouldAllowHeartBeats)
+{
+    sockaddr_storage addr;
+    uint8_t data[128];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    int64_t heartbeats_received = 0;
+    int64_t rcv_hwm_position = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.heartbeats_received_counter= &heartbeats_received;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 10 * term_length;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 123;
+    image.cached_clock = &clock;
+    image.connections.length = 0;
+    image.connections.capacity = 0;
+    image.connections.array = nullptr;
+    image.is_end_of_stream = false;
+    image.rcv_hwm_position.value_addr = &rcv_hwm_position;
+    aeron_receive_destination_t destination;
+    destination.has_control_addr = false;
+
+    int32_t term_id = 5;
+    int32_t term_offset = 8192;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 0;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = 0;
+    frame1->term_offset = term_offset;
+
+    EXPECT_EQ(AERON_DATA_HEADER_LENGTH, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, AERON_DATA_HEADER_LENGTH, &addr, nullptr));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(0, flow_control_over_runs);
+    EXPECT_EQ(1, heartbeats_received);
+    EXPECT_EQ(clock.cached_nano_time, image.time_of_last_packet_ns);
+    EXPECT_EQ(
+        aeron_logbuffer_compute_position(term_id, term_offset, image.position_bits_to_shift, image.initial_term_id),
+        rcv_hwm_position);
+}
+
+TEST_F(PublicationImageTest, shouldAssignPacketTimestamps)
+{
+    sockaddr_storage addr;
+    timespec media_receive_timestamp = {};
+    media_receive_timestamp.tv_sec = 23648234;
+    media_receive_timestamp.tv_nsec = 987;
+    int64_t media_timestamp =
+        (int64_t)1000000000 * (int64_t)media_receive_timestamp.tv_sec + media_receive_timestamp.tv_nsec;
+    uint8_t data[288];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+    destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP | AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP;
+    aeron_receive_channel_endpoint_t endpoint;
+    aeron_udp_channel_t udp_channel;
+    udp_channel.channel_rcv_timestamp_offset = 0;
+    udp_channel.media_rcv_timestamp_offset = AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET;
+    endpoint.conductor_fields.udp_channel = &udp_channel;
+    image.endpoint = &endpoint;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 1024;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[64]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = AERON_DATA_HEADER_BEGIN_FLAG;
+    frame2->term_offset = term_offset + 64;
+
+    auto *frame3 = reinterpret_cast<aeron_data_header_t *>(&data[128]);
+    frame3->frame_header.frame_length = 64;
+    frame3->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame3->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame3->frame_header.flags = 0;
+    frame3->term_offset = term_offset + 128;
+
+    auto *frame4 = reinterpret_cast<aeron_data_header_t *>(&data[192]);
+    frame4->frame_header.frame_length = 64;
+    frame4->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame4->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame4->frame_header.flags = AERON_DATA_HEADER_END_FLAG;
+    frame4->term_offset = term_offset + 192;
+
+    auto *frame5 = reinterpret_cast<aeron_data_header_t *>(&data[256]);
+    frame5->frame_header.frame_length = 1024;
+    frame5->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame5->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame5->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame5->term_offset = term_offset + 256;
+
+    EXPECT_EQ(288, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 288, &addr, &media_receive_timestamp));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+    EXPECT_EQ(media_timestamp, frame1->reserved_value);
+    auto rcv_timestamp = reinterpret_cast<int64_t*>(&data[32]);
+    EXPECT_NE(0, *rcv_timestamp);
+    EXPECT_EQ(media_timestamp, frame2->reserved_value);
+    EXPECT_EQ(*rcv_timestamp, *reinterpret_cast<int64_t*>(&data[96]));
+    EXPECT_EQ(0, frame3->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[160]));
+    EXPECT_EQ(0, frame4->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[224]));
+    EXPECT_EQ(0, frame5->reserved_value);
+}
+
+TEST_F(PublicationImageTest, shouldNotAssignRcvTimestampIfNotEnabled)
+{
+    sockaddr_storage addr;
+    timespec media_receive_timestamp = {};
+    media_receive_timestamp.tv_sec = 23648234;
+    media_receive_timestamp.tv_nsec = 987;
+    int64_t media_timestamp =
+        (int64_t)1000000000 * (int64_t)media_receive_timestamp.tv_sec + media_receive_timestamp.tv_nsec;
+    uint8_t data[288];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+    destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP;
+    aeron_receive_channel_endpoint_t endpoint;
+    aeron_udp_channel_t udp_channel;
+    udp_channel.channel_rcv_timestamp_offset = 0;
+    udp_channel.media_rcv_timestamp_offset = AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET;
+    endpoint.conductor_fields.udp_channel = &udp_channel;
+    image.endpoint = &endpoint;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 1024;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[64]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = AERON_DATA_HEADER_BEGIN_FLAG;
+    frame2->term_offset = term_offset + 64;
+
+    auto *frame3 = reinterpret_cast<aeron_data_header_t *>(&data[128]);
+    frame3->frame_header.frame_length = 64;
+    frame3->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame3->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame3->frame_header.flags = 0;
+    frame3->term_offset = term_offset + 128;
+
+    auto *frame4 = reinterpret_cast<aeron_data_header_t *>(&data[192]);
+    frame4->frame_header.frame_length = 64;
+    frame4->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame4->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame4->frame_header.flags = AERON_DATA_HEADER_END_FLAG;
+    frame4->term_offset = term_offset + 192;
+
+    auto *frame5 = reinterpret_cast<aeron_data_header_t *>(&data[256]);
+    frame5->frame_header.frame_length = 1024;
+    frame5->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame5->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame5->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame5->term_offset = term_offset + 256;
+
+    EXPECT_EQ(288, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 288, &addr, &media_receive_timestamp));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+    EXPECT_EQ(media_timestamp, frame1->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[32]));
+    EXPECT_EQ(media_timestamp, frame2->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[96]));
+    EXPECT_EQ(0, frame3->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[160]));
+    EXPECT_EQ(0, frame4->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[224]));
+    EXPECT_EQ(0, frame5->reserved_value);
+}
+
+TEST_F(PublicationImageTest, shouldNotAssignMediaTimestampIfNotEnabled)
+{
+    sockaddr_storage addr;
+    timespec media_receive_timestamp = {};
+    media_receive_timestamp.tv_sec = 23648234;
+    media_receive_timestamp.tv_nsec = 987;
+    uint8_t data[288];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+    destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP;
+    aeron_receive_channel_endpoint_t endpoint;
+    aeron_udp_channel_t udp_channel;
+    udp_channel.channel_rcv_timestamp_offset = 0;
+    udp_channel.media_rcv_timestamp_offset = AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET;
+    endpoint.conductor_fields.udp_channel = &udp_channel;
+    image.endpoint = &endpoint;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 1024;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[64]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = AERON_DATA_HEADER_BEGIN_FLAG;
+    frame2->term_offset = term_offset + 64;
+
+    auto *frame3 = reinterpret_cast<aeron_data_header_t *>(&data[128]);
+    frame3->frame_header.frame_length = 64;
+    frame3->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame3->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame3->frame_header.flags = 0;
+    frame3->term_offset = term_offset + 128;
+
+    auto *frame4 = reinterpret_cast<aeron_data_header_t *>(&data[192]);
+    frame4->frame_header.frame_length = 64;
+    frame4->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame4->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame4->frame_header.flags = AERON_DATA_HEADER_END_FLAG;
+    frame4->term_offset = term_offset + 192;
+
+    auto *frame5 = reinterpret_cast<aeron_data_header_t *>(&data[256]);
+    frame5->frame_header.frame_length = 1024;
+    frame5->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame5->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame5->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame5->term_offset = term_offset + 256;
+
+    EXPECT_EQ(288, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 288, &addr, &media_receive_timestamp));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+    EXPECT_EQ(0, frame1->reserved_value);
+    auto rcv_timestamp = reinterpret_cast<int64_t*>(&data[32]);
+    EXPECT_NE(0, *rcv_timestamp);
+    EXPECT_EQ(0, frame2->reserved_value);
+    EXPECT_EQ(*rcv_timestamp, *reinterpret_cast<int64_t*>(&data[96]));
+    EXPECT_EQ(0, frame3->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[160]));
+    EXPECT_EQ(0, frame4->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[224]));
+    EXPECT_EQ(0, frame5->reserved_value);
+}
+
+TEST_F(PublicationImageTest, shouldNotSetTimestampsIfEndpointIsNull)
+{
+    sockaddr_storage addr;
+    timespec media_receive_timestamp = {};
+    media_receive_timestamp.tv_sec = 23648234;
+    media_receive_timestamp.tv_nsec = 987;
+    uint8_t data[288];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+    destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP | AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP;
+    aeron_receive_channel_endpoint_t endpoint;
+    aeron_udp_channel_t udp_channel;
+    udp_channel.channel_rcv_timestamp_offset = 0;
+    udp_channel.media_rcv_timestamp_offset = AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET;
+    endpoint.conductor_fields.udp_channel = &udp_channel;
+    image.endpoint = nullptr;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 1024;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 64;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[64]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = AERON_DATA_HEADER_BEGIN_FLAG;
+    frame2->term_offset = term_offset + 64;
+
+    auto *frame3 = reinterpret_cast<aeron_data_header_t *>(&data[128]);
+    frame3->frame_header.frame_length = 64;
+    frame3->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame3->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame3->frame_header.flags = 0;
+    frame3->term_offset = term_offset + 128;
+
+    auto *frame4 = reinterpret_cast<aeron_data_header_t *>(&data[192]);
+    frame4->frame_header.frame_length = 64;
+    frame4->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame4->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame4->frame_header.flags = AERON_DATA_HEADER_END_FLAG;
+    frame4->term_offset = term_offset + 192;
+
+    auto *frame5 = reinterpret_cast<aeron_data_header_t *>(&data[256]);
+    frame5->frame_header.frame_length = 1024;
+    frame5->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame5->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame5->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame5->term_offset = term_offset + 256;
+
+    EXPECT_EQ(288, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 288, &addr, &media_receive_timestamp));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+    EXPECT_EQ(0, frame1->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[32]));
+    EXPECT_EQ(0, frame2->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[96]));
+    EXPECT_EQ(0, frame3->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[160]));
+    EXPECT_EQ(0, frame4->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[224]));
+    EXPECT_EQ(0, frame5->reserved_value);
+}
+
+TEST_F(PublicationImageTest, shouldNotSetTimestampsIfTimestampOffsetDoNotFitTheFrameLength)
+{
+    sockaddr_storage addr;
+    timespec media_receive_timestamp = {};
+    media_receive_timestamp.tv_sec = 5000;
+    media_receive_timestamp.tv_nsec = 123;
+    int64_t media_timestamp =
+        (int64_t)1000000000 * (int64_t)media_receive_timestamp.tv_sec + media_receive_timestamp.tv_nsec;
+    uint8_t data[256];
+    memset(&data, 0, sizeof(data));
+    int64_t invalid_packets = 0;
+    int64_t flow_control_over_runs = 0;
+    aeron_publication_image_t image;
+    image.initial_term_id = 0;
+    image.invalid_packets_counter = &invalid_packets;
+    image.flow_control_over_runs_counter= &flow_control_over_runs;
+    image.invalidation_reason = nullptr;
+    int32_t term_length = 64 * 1024;
+    image.term_length_mask = term_length - 1;
+    image.position_bits_to_shift = aeron_number_of_trailing_zeroes(term_length);
+    image.last_sm_position = 0;
+    image.last_overrun_threshold = 0;
+    aeron_clock_cache_t clock;
+    clock.cached_nano_time = 1;
+    image.cached_clock = &clock;
+    aeron_receive_destination_t destination;
+    destination.transport.timestamp_flags = AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP | AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP;
+    aeron_receive_channel_endpoint_t endpoint;
+    aeron_udp_channel_t udp_channel;
+    udp_channel.channel_rcv_timestamp_offset = 40;
+    udp_channel.media_rcv_timestamp_offset = 80;
+    endpoint.conductor_fields.udp_channel = &udp_channel;
+    image.endpoint = &endpoint;
+
+    int32_t term_id = 1;
+    int32_t term_offset = 1024;
+
+    auto *frame1 = reinterpret_cast<aeron_data_header_t *>(&data[0]);
+    frame1->frame_header.frame_length = 128;
+    frame1->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame1->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame1->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame1->term_offset = term_offset;
+
+    auto *frame2 = reinterpret_cast<aeron_data_header_t *>(&data[128]);
+    frame2->frame_header.frame_length = 64;
+    frame2->frame_header.type = AERON_HDR_TYPE_DATA;
+    frame2->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame2->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame2->term_offset = term_offset + 128;
+
+    auto *frame3 = reinterpret_cast<aeron_data_header_t *>(&data[192]);
+    frame3->frame_header.frame_length = 64;
+    frame3->frame_header.type = AERON_HDR_TYPE_PAD;
+    frame3->frame_header.version = AERON_FRAME_HEADER_VERSION;
+    frame3->frame_header.flags = AERON_DATA_HEADER_UNFRAGMENTED;
+    frame3->term_offset = term_offset + 192;
+    frame3->session_id = 42;
+    frame3->stream_id = -500;
+    frame3->term_id = 12;
+    frame3->reserved_value = 777;
+
+    EXPECT_EQ(256, aeron_publication_image_insert_packet(
+        &image, &destination, term_id, term_offset, data, 256, &addr, &media_receive_timestamp));
+    EXPECT_EQ(0, invalid_packets);
+    EXPECT_EQ(1, flow_control_over_runs);
+    EXPECT_NE(0, *reinterpret_cast<int64_t*>(&data[72]));
+    EXPECT_EQ(media_timestamp, *reinterpret_cast<int64_t*>(&data[112]));
+    EXPECT_EQ(term_offset + 192, frame3->term_offset);
+    EXPECT_EQ(42, frame3->session_id);
+    EXPECT_EQ(-500, frame3->stream_id);
+    EXPECT_EQ(12, frame3->term_id);
+    EXPECT_EQ(777, frame3->reserved_value);
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[224]));
+    EXPECT_EQ(0, *reinterpret_cast<int64_t*>(&data[240]));
 }

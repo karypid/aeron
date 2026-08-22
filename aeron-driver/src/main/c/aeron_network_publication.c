@@ -863,7 +863,7 @@ void aeron_network_publication_on_error(
     struct sockaddr_storage *src_address,
     aeron_driver_conductor_proxy_t *conductor_proxy)
 {
-    aeron_error_t *error = (aeron_error_t *)buffer;
+    aeron_error_header_t *error = (aeron_error_header_t *)buffer;
     const uint8_t *error_text = (const uint8_t *)(error + 1);
     const int64_t time_ns = aeron_clock_cached_nano_time(publication->cached_clock);
     publication->flow_control->on_error(publication->flow_control->state, buffer, length, src_address, time_ns);

@@ -26,7 +26,6 @@
 #include "collections/aeron_int64_to_ptr_hash_map.h"
 #include "media/aeron_receive_channel_endpoint.h"
 #include "aeron_driver_receiver.h"
-#include "aeron_timestamps.h"
 #include "util/aeron_bitutil.h"
 #include "protocol/aeron_udp_protocol.h"
 
@@ -474,11 +473,11 @@ int aeron_receiver_channel_endpoint_send_error_frame(
     const char *invalidation_reason)
 {
     uint8_t buffer[AERON_ERROR_MAX_FRAME_LENGTH];
-    aeron_error_t *error = (aeron_error_t *)buffer;
+    aeron_error_header_t *error = (aeron_error_header_t *)buffer;
     struct iovec iov;
 
     const size_t error_message_length = strnlen(invalidation_reason, AERON_ERROR_MAX_TEXT_LENGTH);
-    const size_t frame_length = sizeof(aeron_error_t) + error_message_length;
+    const size_t frame_length = sizeof(aeron_error_header_t) + error_message_length;
     error->frame_header.frame_length = (int32_t)frame_length;
     error->frame_header.version = AERON_FRAME_HEADER_VERSION;
     error->frame_header.flags = channel_endpoint->group_tag.is_present ? AERON_ERROR_HAS_GROUP_TAG_FLAG : UINT8_C(0);
@@ -489,7 +488,7 @@ int aeron_receiver_channel_endpoint_send_error_frame(
     error->group_tag = channel_endpoint->group_tag.value;
     error->error_code = error_code;
     error->error_length = (int32_t)error_message_length;
-    memcpy(&buffer[sizeof(aeron_error_t)], invalidation_reason, error_message_length);
+    memcpy(&buffer[sizeof(aeron_error_header_t)], invalidation_reason, error_message_length);
 
     iov.iov_base = buffer;
     iov.iov_len = (unsigned long)frame_length;
@@ -525,7 +524,7 @@ void aeron_receive_channel_endpoint_dispatch(
     aeron_receive_channel_endpoint_t *endpoint = (aeron_receive_channel_endpoint_t *)endpoint_clientd;
     aeron_receive_destination_t *destination = (aeron_receive_destination_t *)destination_clientd;
 
-    if ((length < sizeof(aeron_frame_header_t)) || (frame_header->version != AERON_FRAME_HEADER_VERSION))
+    if (!aeron_is_frame_valid(frame_header, length))
     {
         aeron_counter_increment(receiver->invalid_frames_counter);
         return;
@@ -535,80 +534,32 @@ void aeron_receive_channel_endpoint_dispatch(
     {
         case AERON_HDR_TYPE_PAD:
         case AERON_HDR_TYPE_DATA:
-            if (length >= sizeof(aeron_data_header_t))
+            if (aeron_receive_channel_endpoint_on_data(
+                endpoint, destination, buffer, length, addr, media_receive_timestamp) < 0)
             {
-                if (aeron_receive_channel_endpoint_on_data(
-                    endpoint, destination, buffer, length, addr, media_receive_timestamp) < 0)
-                {
-                    AERON_APPEND_ERR("%s", "receiver on_data");
-                    aeron_driver_receiver_log_error(receiver);
-                }
-            }
-            else
-            {
-                aeron_counter_increment(receiver->invalid_frames_counter);
+                AERON_APPEND_ERR("%s", "receiver on_data");
+                aeron_driver_receiver_log_error(receiver);
             }
             break;
 
         case AERON_HDR_TYPE_SETUP:
-            if (length >= sizeof(aeron_setup_header_t))
+            if (aeron_receive_channel_endpoint_on_setup(receiver, endpoint, destination, buffer, length, addr) < 0)
             {
-                if (aeron_receive_channel_endpoint_on_setup(endpoint, destination, buffer, length, addr) < 0)
-                {
-                    AERON_APPEND_ERR("%s", "receiver on_setup");
-                    aeron_driver_receiver_log_error(receiver);
-                }
-            }
-            else
-            {
-                aeron_counter_increment(receiver->invalid_frames_counter);
+                AERON_APPEND_ERR("%s", "receiver on_setup");
+                aeron_driver_receiver_log_error(receiver);
             }
             break;
 
         case AERON_HDR_TYPE_RTTM:
-            if (length >= sizeof(aeron_rttm_header_t))
+            if (aeron_receive_channel_endpoint_on_rttm(endpoint, destination, buffer, length, addr) < 0)
             {
-                if (aeron_receive_channel_endpoint_on_rttm(endpoint, destination, buffer, length, addr) < 0)
-                {
-                    AERON_APPEND_ERR("%s", "receiver on_rttm");
-                    aeron_driver_receiver_log_error(receiver);
-                }
-            }
-            else
-            {
-                aeron_counter_increment(receiver->invalid_frames_counter);
+                AERON_APPEND_ERR("%s", "receiver on_rttm");
+                aeron_driver_receiver_log_error(receiver);
             }
             break;
 
         default:
             break;
-    }
-}
-
-static void aeron_receive_channel_endpoint_apply_timestamps(
-    aeron_udp_channel_t *endpoint_channel,
-    uint32_t timestamp_flags,
-    struct timespec *media_receive_timestamp,
-    uint8_t *buffer,
-    size_t length)
-{
-    if (!aeron_publication_image_is_heartbeat(buffer, length))
-    {
-        if (NULL != media_receive_timestamp)
-        {
-            int32_t offset = endpoint_channel->media_rcv_timestamp_offset;
-            aeron_timestamps_set_timestamp(media_receive_timestamp, offset, buffer, length);
-        }
-
-        if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP & timestamp_flags)
-        {
-            struct timespec receive_timestamp;
-            if (0 == aeron_clock_gettime_realtime(&receive_timestamp))
-            {
-                int32_t offset = endpoint_channel->channel_rcv_timestamp_offset;
-                aeron_timestamps_set_timestamp(&receive_timestamp, offset, buffer, length);
-            }
-        }
     }
 }
 
@@ -636,21 +587,28 @@ int aeron_receive_channel_endpoint_on_data(
         return 0;
     }
 
-    aeron_receive_channel_endpoint_apply_timestamps(
-        endpoint->conductor_fields.udp_channel,
-        destination->transport.timestamp_flags,
-        media_receive_timestamp,
-        buffer,
-        length);
-
     aeron_receive_destination_update_last_activity_ns(
         destination, aeron_clock_cached_nano_time(endpoint->cached_clock));
 
     return aeron_data_packet_dispatcher_on_data(
-        &endpoint->dispatcher, endpoint, destination, data_header, buffer, length, addr);
+        &endpoint->dispatcher, endpoint, destination, data_header, buffer, length, addr, media_receive_timestamp);
+}
+
+static bool aeron_receive_channel_endpoint_is_valid_setup(aeron_setup_header_t *setup_header)
+{
+    return setup_header->term_length >= AERON_LOGBUFFER_TERM_MIN_LENGTH &&
+        setup_header->term_length <= AERON_LOGBUFFER_TERM_MAX_LENGTH &&
+        AERON_IS_POWER_OF_TWO((uint32_t)setup_header->term_length) &&
+        setup_header->term_offset >= 0 &&
+        setup_header->term_offset < setup_header->term_length &&
+        AERON_IS_ALIGNED(setup_header->term_offset, AERON_FRAME_ALIGNMENT) &&
+        (size_t)setup_header->mtu >= AERON_DATA_HEADER_LENGTH &&
+        (size_t)setup_header->mtu <= AERON_MAX_UDP_PAYLOAD_LENGTH &&
+        AERON_IS_ALIGNED(setup_header->mtu, AERON_FRAME_ALIGNMENT);
 }
 
 int aeron_receive_channel_endpoint_on_setup(
+    aeron_driver_receiver_t *receiver,
     aeron_receive_channel_endpoint_t *endpoint,
     aeron_receive_destination_t *destination,
     uint8_t *buffer,
@@ -665,6 +623,11 @@ int aeron_receive_channel_endpoint_on_setup(
     }
 
     aeron_setup_header_t *setup_header = (aeron_setup_header_t *)buffer;
+    if (!aeron_receive_channel_endpoint_is_valid_setup((aeron_setup_header_t *)buffer))
+    {
+        aeron_counter_increment(receiver->invalid_frames_counter);
+        return 0;
+    }
 
     aeron_receive_destination_update_last_activity_ns(
         destination, aeron_clock_cached_nano_time(endpoint->cached_clock));

@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "util/aeron_bitutil.h"
 
 #pragma pack(push)
 #pragma pack(4)
@@ -92,7 +93,7 @@ typedef struct aeron_status_message_optional_header_stct
 }
 aeron_status_message_optional_header_t;
 
-struct aeron_error_stct
+struct aeron_error_header_stct
 {
     aeron_frame_header_t frame_header;
     int32_t session_id;
@@ -102,7 +103,7 @@ struct aeron_error_stct
     int32_t error_code;
     int32_t error_length;
 };
-typedef struct aeron_error_stct aeron_error_t;
+typedef struct aeron_error_header_stct aeron_error_header_t;
 
 typedef struct aeron_rttm_header_stct
 {
@@ -184,6 +185,7 @@ int aeron_udp_protocol_group_tag(aeron_status_message_header_t *sm, int64_t *gro
 
 #define AERON_FRAME_HEADER_LENGTH (sizeof(aeron_frame_header_t))
 #define AERON_DATA_HEADER_LENGTH (sizeof(aeron_data_header_t))
+#define AERON_FRAME_ALIGNMENT UINT8_C(32)
 
 #define AERON_DATA_HEADER_BEGIN_FLAG (UINT8_C(0x80))
 #define AERON_DATA_HEADER_END_FLAG (UINT8_C(0x40))
@@ -221,12 +223,43 @@ int aeron_udp_protocol_group_tag(aeron_status_message_header_t *sm, int64_t *gro
 #define AERON_OPT_HDR_ALIGNMENT (4u)
 
 #define AERON_ERROR_MAX_TEXT_LENGTH (1023)
-#define AERON_ERROR_MAX_FRAME_LENGTH (sizeof(aeron_error_t) + AERON_ERROR_MAX_TEXT_LENGTH)
+#define AERON_ERROR_MAX_FRAME_LENGTH (sizeof(aeron_error_header_t) + AERON_ERROR_MAX_TEXT_LENGTH)
 #define AERON_ERROR_HAS_GROUP_TAG_FLAG (0x08)
 
-inline bool aeron_is_frame_valid(const aeron_frame_header_t *header, const size_t frame_length)
+inline bool aeron_is_frame_valid(const aeron_frame_header_t *header, const size_t packet_length)
 {
-    return frame_length >= AERON_FRAME_HEADER_LENGTH && AERON_FRAME_HEADER_VERSION == header->version;
+    if (packet_length >= AERON_FRAME_HEADER_LENGTH &&
+        header->frame_length >= 0 &&
+        AERON_FRAME_HEADER_VERSION == header->version)
+    {
+        if (AERON_HDR_TYPE_DATA == header->type || AERON_HDR_TYPE_PAD == header->type)
+        {
+            return packet_length >= AERON_DATA_HEADER_LENGTH && AERON_IS_ALIGNED(packet_length, AERON_FRAME_ALIGNMENT);
+        }
+
+        const size_t frame_length = header->frame_length;
+        switch (header->type)
+        {
+            case AERON_HDR_TYPE_NAK:
+                return packet_length >= sizeof(aeron_nak_header_t) && frame_length <= packet_length;
+            case AERON_HDR_TYPE_SM:
+                return packet_length >= sizeof(aeron_status_message_header_t) && frame_length <= packet_length;
+            case AERON_HDR_TYPE_ERR:
+                return packet_length >= sizeof(aeron_error_header_t) && frame_length <= packet_length;
+            case AERON_HDR_TYPE_SETUP:
+                return packet_length >= sizeof(aeron_setup_header_t) && frame_length <= packet_length;
+            case AERON_HDR_TYPE_RTTM:
+                return packet_length >= sizeof(aeron_rttm_header_t) && frame_length <= packet_length;
+            case AERON_HDR_TYPE_RES:
+                return packet_length >= AERON_FRAME_HEADER_LENGTH + sizeof(aeron_resolution_header_ipv4_t) &&
+                frame_length <= packet_length;
+            case AERON_HDR_TYPE_RSP_SETUP:
+                return packet_length >= sizeof(aeron_response_setup_header_t) && frame_length <= packet_length;
+            default:
+                return false;
+        }
+    }
+    return false;
 }
 
 inline size_t aeron_res_header_address_length(int8_t res_type)

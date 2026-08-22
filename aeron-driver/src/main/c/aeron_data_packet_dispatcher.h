@@ -90,7 +90,8 @@ int aeron_data_packet_dispatcher_on_data(
     aeron_data_header_t *header,
     uint8_t *buffer,
     size_t length,
-    struct sockaddr_storage *addr);
+    struct sockaddr_storage *addr,
+    struct timespec *media_receive_timestamp);
 
 int aeron_data_packet_dispatcher_on_setup(
     aeron_data_packet_dispatcher_t *dispatcher,

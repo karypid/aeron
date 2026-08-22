@@ -21,9 +21,6 @@
 #include <time.h>
 
 void aeron_timestamps_set_timestamp(
-    struct timespec *timestamp,
-    int32_t offset,
-    uint8_t *frame,
-    size_t frame_length);
+    struct timespec *timestamp, int32_t timestamp_offset, aeron_data_header_t *data_header);
 
 #endif // AERON_TIMESTAMPS_H

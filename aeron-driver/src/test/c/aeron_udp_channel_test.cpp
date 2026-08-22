@@ -120,7 +120,6 @@ class UdpChannelEqualityParameterisedTest :
 {
 };
 
-
 TEST_F(UdpChannelTest, shouldComputeMaxMessageLength)
 {
     EXPECT_EQ(0, aeron_compute_max_message_length(0));
@@ -131,22 +130,130 @@ TEST_F(UdpChannelTest, shouldComputeMaxMessageLength)
     EXPECT_EQ(16 * 1024 * 1024, aeron_compute_max_message_length(512 * 1024 * 1024));
 }
 
-TEST_F(UdpChannelTest, shouldCheckIfFrameIsValid)
+TEST_F(UdpChannelTest, shouldRejectFrameWithInsufficientLength)
 {
     aeron_frame_header_t header = {};
-
-    EXPECT_FALSE(aeron_is_frame_valid(&header, 1)); // length below min header length
-
-    header.version = 123;
-    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_LENGTH)); // wrong version
-
+    header.frame_length = 0;
     header.version = AERON_FRAME_HEADER_VERSION;
+
+    EXPECT_FALSE(aeron_is_frame_valid(&header, 1));
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_VERSION - 1));
+}
+
+TEST_F(UdpChannelTest, shouldRejectFrameWithNegativeFrameLength)
+{
+    aeron_frame_header_t header = {};
+    header.version = AERON_FRAME_HEADER_VERSION;
+
+    header.frame_length = -1;
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_VERSION));
+
+    header.frame_length = INT32_MIN;
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_VERSION));
+}
+
+TEST_F(UdpChannelTest, shouldRejectFrameWithInvalidVersion)
+{
+    aeron_frame_header_t header = {};
+    header.frame_length = 32;
+
+    header.version = -1;
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_VERSION));
+
+    header.version = 120;
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_VERSION));
+}
+
+class DataFrameValidationTest :
+    public testing::TestWithParam<int16_t>,
+    public UdpChannelTestBase
+{
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    DataFrameValidationTests,
+    DataFrameValidationTest,
+    testing::Values(AERON_HDR_TYPE_PAD, AERON_HDR_TYPE_DATA));
+
+TEST_P(DataFrameValidationTest, shouldValidateDataFrame)
+{
+    aeron_frame_header_t header = {};
+    header.frame_length = 0;
+    header.type = GetParam();
+    header.version = AERON_FRAME_HEADER_VERSION;
+
+    // length is below AERON_DATA_HEADER_LENGTH
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_LENGTH));
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_DATA_HEADER_LENGTH - 1));
+
+    // length is not aligned
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_DATA_HEADER_LENGTH + 1));
+
+    EXPECT_TRUE(aeron_is_frame_valid(&header, AERON_DATA_HEADER_LENGTH));
+    EXPECT_TRUE(aeron_is_frame_valid(&header, 1024));
+}
+
+class NonDataFrameValidationTest :
+    public testing::TestWithParam<std::tuple<int16_t, int32_t>>,
+    public UdpChannelTestBase
+{
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    NonDataFrameValidationTests,
+    NonDataFrameValidationTest,
+    testing::Values(
+        std::make_tuple(AERON_HDR_TYPE_NAK, sizeof(aeron_nak_header_t)),
+        std::make_tuple(AERON_HDR_TYPE_SM, sizeof(aeron_status_message_header_t)),
+        std::make_tuple(AERON_HDR_TYPE_ERR, sizeof(aeron_error_header_t)),
+        std::make_tuple(AERON_HDR_TYPE_SETUP, sizeof(aeron_setup_header_t)),
+        std::make_tuple(AERON_HDR_TYPE_RTTM, sizeof(aeron_rttm_header_t)),
+        std::make_tuple(AERON_HDR_TYPE_RES, AERON_FRAME_HEADER_LENGTH + sizeof(aeron_resolution_header_ipv4_t)),
+        std::make_tuple(AERON_HDR_TYPE_RSP_SETUP, sizeof(aeron_response_setup_header_t))));
+
+TEST_P(NonDataFrameValidationTest, shouldValidateNonDataFrames)
+{
+    aeron_frame_header_t header = {};
+    header.frame_length = 0;
+    header.type = std::get<0>(GetParam());
+    header.version = AERON_FRAME_HEADER_VERSION;
+
+    int32_t min_size = std::get<1>(GetParam());
+
+    // length is below min size
+    EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_LENGTH));
+    EXPECT_FALSE(aeron_is_frame_valid(&header, min_size - 1));
+
+    // frame_length is outside of the packet boundaries
+    header.frame_length = min_size + 1;
+    EXPECT_FALSE(aeron_is_frame_valid(&header, min_size));
+
+    header.frame_length = min_size;
+    EXPECT_TRUE(aeron_is_frame_valid(&header, min_size));
     header.frame_length = 100;
-    EXPECT_TRUE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_LENGTH + 1));
-    header.type = 123;
-    EXPECT_TRUE(aeron_is_frame_valid(&header, header.frame_length));
-    header.flags = 0xAE;
-    EXPECT_TRUE(aeron_is_frame_valid(&header, INT32_MAX));
+    EXPECT_TRUE(aeron_is_frame_valid(&header, 200));
+}
+
+
+class UnsupportedFrameTypeValidationTest :
+    public testing::TestWithParam<int16_t>,
+    public UdpChannelTestBase
+{
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    UnsupportedFrameTypeValidationTests,
+    UnsupportedFrameTypeValidationTest,
+    testing::Values(AERON_HDR_TYPE_ATS_DATA, AERON_HDR_TYPE_ATS_SM, AERON_HDR_TYPE_ATS_SETUP, AERON_HDR_TYPE_EXT));
+
+TEST_P(UnsupportedFrameTypeValidationTest, shouldRejectFramesWithUnsupportedType)
+{
+    aeron_frame_header_t header = {};
+    header.frame_length = 0;
+    header.type = GetParam();
+    header.version = AERON_FRAME_HEADER_VERSION;
+
+    EXPECT_FALSE(aeron_is_frame_valid(&header, 128));
 }
 
 TEST_F(UdpChannelTest, shouldParseExplicitLocalAddressAndPortFormat)

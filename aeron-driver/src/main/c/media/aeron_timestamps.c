@@ -19,31 +19,23 @@
 #include "aeron_udp_channel.h"
 
 void aeron_timestamps_set_timestamp(
-    struct timespec *timestamp,
-    int32_t offset,
-    uint8_t *frame,
-    size_t frame_length)
+    struct timespec *timestamp, int32_t timestamp_offset, aeron_data_header_t *data_header)
 {
-    aeron_data_header_t *data_header = (aeron_data_header_t *)frame;
+    int64_t timestamp_ns = INT64_C(1000000000) * timestamp->tv_sec + timestamp->tv_nsec;
 
-    if (frame_length >= sizeof(aeron_data_header_t) &&
-        AERON_HDR_TYPE_DATA == data_header->frame_header.type &&
-        AERON_DATA_HEADER_BEGIN_FLAG & data_header->frame_header.flags &&
-        0 != data_header->frame_header.frame_length)
+    if (AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET == timestamp_offset)
     {
-        size_t body_length = frame_length - sizeof(aeron_data_header_t);
-        uint8_t *body_buffer = frame + sizeof(aeron_data_header_t);
-        int64_t timestamp_ns = (INT64_C(1000) * 1000 * 1000 * timestamp->tv_sec) + timestamp->tv_nsec;
-
-        if (AERON_UDP_CHANNEL_RESERVED_VALUE_OFFSET == offset)
+        data_header->reserved_value = timestamp_ns;
+    }
+    else
+    {
+        size_t body_length = data_header->frame_header.frame_length - AERON_DATA_HEADER_LENGTH;
+        if (0 <= timestamp_offset && timestamp_offset <= (int32_t)(body_length - sizeof(timestamp_ns)))
         {
-            data_header->reserved_value = timestamp_ns;
-        }
-        else if (0 <= offset &&
-            offset <= (int32_t)(body_length - sizeof(timestamp_ns)) &&
-            offset <= (int32_t)((data_header->frame_header.frame_length - sizeof(*data_header)) - sizeof(timestamp_ns)))
-        {
-            memcpy(body_buffer + (size_t)offset, &timestamp_ns, sizeof(timestamp_ns));
+            memcpy(
+                (uint8_t *)data_header + AERON_DATA_HEADER_LENGTH + (size_t)timestamp_offset,
+                &timestamp_ns,
+                sizeof(timestamp_ns));
         }
     }
 }

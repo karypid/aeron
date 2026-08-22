@@ -389,7 +389,8 @@ int aeron_data_packet_dispatcher_on_data(
     aeron_data_header_t *header,
     uint8_t *buffer,
     size_t length,
-    struct sockaddr_storage *addr)
+    struct sockaddr_storage *addr,
+    struct timespec *media_receive_timestamp)
 {
     aeron_data_packet_dispatcher_stream_interest_t *stream_interest =
         aeron_int64_to_ptr_hash_map_get(&dispatcher->session_by_stream_id_map, header->stream_id);
@@ -403,7 +404,7 @@ int aeron_data_packet_dispatcher_on_data(
         if (NULL != image)
         {
             return aeron_publication_image_insert_packet(
-                image, destination, header->term_id, header->term_offset, buffer, length, addr);
+                image, destination, header->term_id, header->term_offset, buffer, length, addr, media_receive_timestamp);
         }
         else if (0 == (header->frame_header.flags & AERON_DATA_HEADER_EOS_FLAG) &&
             stream_interest->state_by_session_id_map.initial_value == aeron_int64_counter_map_get(&stream_interest->state_by_session_id_map, session_id))

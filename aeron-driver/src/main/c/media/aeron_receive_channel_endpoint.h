@@ -181,6 +181,7 @@ int aeron_receive_channel_endpoint_on_data(
     struct timespec *media_receive_timestamp);
 
 int aeron_receive_channel_endpoint_on_setup(
+    aeron_driver_receiver_t *receiver,
     aeron_receive_channel_endpoint_t *endpoint,
     aeron_receive_destination_t *destination,
     uint8_t *buffer,

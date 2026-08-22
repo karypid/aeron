@@ -384,7 +384,7 @@ int64_t aeron_udp_destination_tracker_find_registration_id(
     size_t len,
     struct sockaddr_storage *addr)
 {
-    aeron_error_t *error = (aeron_error_t *)buffer;
+    aeron_error_header_t *error = (aeron_error_header_t *)buffer;
     const int64_t receiver_id = error->receiver_id;
 
     for (size_t i = 0, size = tracker->destinations.length; i < size; i++)

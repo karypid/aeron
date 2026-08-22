@@ -88,8 +88,9 @@ TEST_F(DataPacketDispatcherTest, shouldInsertDataInputSubscribedPublicationImage
     aeron_publication_image_t *image = createImage(stream_id, session_id);
     ASSERT_NE(nullptr, image) << aeron_errmsg();
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    size_t aligned_len = AERON_ALIGN(len, AERON_FRAME_ALIGNMENT);
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
 
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription(m_dispatcher, stream_id));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_publication_image(m_dispatcher, image));
@@ -100,11 +101,12 @@ TEST_F(DataPacketDispatcherTest, shouldInsertDataInputSubscribedPublicationImage
         m_destination,
         data_header,
         data_buffer.data(),
-        len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        aligned_len,
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
 
-    ASSERT_EQ((int)len, bytes_written);
-    ASSERT_EQ((int64_t)len, *image->rcv_hwm_position.value_addr);
+    ASSERT_EQ((int)aligned_len, bytes_written);
+    ASSERT_EQ((int64_t)aligned_len, *image->rcv_hwm_position.value_addr);
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
 }
 
@@ -116,8 +118,8 @@ TEST_F(DataPacketDispatcherTest, shouldNotInsertDataInputWithNoSubscription)
     int32_t stream_id = 434523;
 
     aeron_publication_image_t *image = createImage(stream_id, session_id);
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
 
     int32_t other_stream_id = stream_id + 1;
 
@@ -135,7 +137,8 @@ TEST_F(DataPacketDispatcherTest, shouldNotInsertDataInputWithNoSubscription)
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
 
     ASSERT_EQ(0, bytes_written);
     ASSERT_EQ(expected_position_after_data, *image->rcv_hwm_position.value_addr);
@@ -148,8 +151,8 @@ TEST_F(DataPacketDispatcherTest, shouldElicitSetupMessageForSubscriptionWithoutI
     int32_t session_id = 123123;
     int32_t stream_id = 434523;
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
 
     // No publication added...
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription(m_dispatcher, stream_id));
@@ -161,7 +164,8 @@ TEST_F(DataPacketDispatcherTest, shouldElicitSetupMessageForSubscriptionWithoutI
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data));
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_on_data(
         m_dispatcher,
         m_receive_endpoint,
@@ -169,7 +173,8 @@ TEST_F(DataPacketDispatcherTest, shouldElicitSetupMessageForSubscriptionWithoutI
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data));
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_on_data(
         m_dispatcher,
         m_receive_endpoint,
@@ -177,7 +182,8 @@ TEST_F(DataPacketDispatcherTest, shouldElicitSetupMessageForSubscriptionWithoutI
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data));
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr));
 
     ASSERT_EQ(1, m_test_bindings_state->sm_count);
 
@@ -190,7 +196,8 @@ TEST_F(DataPacketDispatcherTest, shouldElicitSetupMessageForSubscriptionWithoutI
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data));
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr));
 
     ASSERT_EQ(2, m_test_bindings_state->sm_count);
 }
@@ -328,8 +335,8 @@ TEST_F(DataPacketDispatcherTest, shouldIgnoreDataAndSetupAfterImageRemoved)
     ASSERT_EQ(0, aeron_data_packet_dispatcher_remove_publication_image(m_dispatcher, image));
 
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
     aeron_setup_header_t *setup_header = setupPacket(data_buffer, stream_id, session_id);
 
     aeron_data_packet_dispatcher_on_data(
@@ -339,7 +346,8 @@ TEST_F(DataPacketDispatcherTest, shouldIgnoreDataAndSetupAfterImageRemoved)
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
     ASSERT_TRUE(isEmpty(m_conductor_proxy.command_queue));
     aeron_data_packet_dispatcher_on_setup(
         m_dispatcher,
@@ -369,8 +377,8 @@ TEST_F(DataPacketDispatcherTest, shouldNotIgnoreDataAndSetupAfterImageRemovedAnd
     ASSERT_EQ(0, aeron_data_packet_dispatcher_remove_publication_image(m_dispatcher, image));
     aeron_data_packet_dispatcher_remove_cool_down(m_dispatcher, session_id, stream_id);
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
-    size_t len = sizeof(aeron_data_header_t) + 8;
+    size_t len = sizeof(aeron_data_header_t) + 24;
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
     aeron_setup_header_t *setup_header = setupPacket(data_buffer, stream_id, session_id);
 
     aeron_data_packet_dispatcher_on_data(
@@ -380,7 +388,8 @@ TEST_F(DataPacketDispatcherTest, shouldNotIgnoreDataAndSetupAfterImageRemovedAnd
         data_header,
         data_buffer.data(),
         len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
     aeron_data_packet_dispatcher_on_setup(
         m_dispatcher,
         m_receive_endpoint,
@@ -408,8 +417,9 @@ TEST_F(DataPacketDispatcherTest, shouldNotRemoveNewPublicationImageFromOldRemove
     aeron_publication_image_t *image1 = createImage(stream_id, session_id, 0);
     aeron_publication_image_t *image2 = createImage(stream_id, session_id, 1);
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    size_t aligned_len = AERON_ALIGN(len, AERON_FRAME_ALIGNMENT);
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
 
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription(m_dispatcher, stream_id));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_publication_image(m_dispatcher, image1));
@@ -424,11 +434,12 @@ TEST_F(DataPacketDispatcherTest, shouldNotRemoveNewPublicationImageFromOldRemove
         m_destination,
         data_header,
         data_buffer.data(),
-        len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        aligned_len,
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
 
-    ASSERT_EQ((int)len, bytes_written);
-    ASSERT_EQ((int64_t)len, *image2->rcv_hwm_position.value_addr);
+    ASSERT_EQ((int)aligned_len, bytes_written);
+    ASSERT_EQ((int64_t)aligned_len, *image2->rcv_hwm_position.value_addr);
 }
 
 TEST_F(DataPacketDispatcherTest, shouldAddSessionSpecificSubscriptionAndIgnoreOtherSession)
@@ -483,8 +494,9 @@ TEST_F(DataPacketDispatcherTest, shouldRemoveSessionSpecificSubscriptionAndStill
     aeron_publication_image_t *image = createImage(stream_id, session_id);
     ASSERT_NE(nullptr, image) << aeron_errmsg();
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    size_t aligned_len = AERON_ALIGN(len, AERON_FRAME_ALIGNMENT);
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id, len);
 
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription(m_dispatcher, stream_id));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_publication_image(m_dispatcher, image));
@@ -497,11 +509,12 @@ TEST_F(DataPacketDispatcherTest, shouldRemoveSessionSpecificSubscriptionAndStill
         m_destination,
         data_header,
         data_buffer.data(),
-        len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        aligned_len,
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
 
-    ASSERT_EQ((int)len, bytes_written);
-    ASSERT_EQ((int64_t)len, *image->rcv_hwm_position.value_addr);
+    ASSERT_EQ((int)aligned_len, bytes_written);
+    ASSERT_EQ((int64_t)aligned_len, *image->rcv_hwm_position.value_addr);
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
 }
 
@@ -516,8 +529,9 @@ TEST_F(DataPacketDispatcherTest, shouldNotRemoveStreamInterestOnRemovalOfSession
     aeron_publication_image_t *image = createImage(stream_id, session_id_2);
     ASSERT_NE(nullptr, image) << aeron_errmsg();
 
-    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id_2);
     size_t len = sizeof(aeron_data_header_t) + 8;
+    size_t aligned_len = AERON_ALIGN(len, AERON_FRAME_ALIGNMENT);
+    aeron_data_header_t *data_header = dataPacket(data_buffer, stream_id, session_id_2, len);
 
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription_by_session(m_dispatcher, stream_id, session_id_1));
     ASSERT_EQ(0, aeron_data_packet_dispatcher_add_subscription_by_session(m_dispatcher, stream_id, session_id_2));
@@ -530,11 +544,12 @@ TEST_F(DataPacketDispatcherTest, shouldNotRemoveStreamInterestOnRemovalOfSession
         m_destination,
         data_header,
         data_buffer.data(),
-        len,
-        &m_receive_endpoint->conductor_fields.udp_channel->local_data);
+        aligned_len,
+        &m_receive_endpoint->conductor_fields.udp_channel->local_data,
+        nullptr);
 
-    ASSERT_EQ((int)len, bytes_written);
-    ASSERT_EQ((int64_t)len, *image->rcv_hwm_position.value_addr);
+    ASSERT_EQ((int)aligned_len, bytes_written);
+    ASSERT_EQ((int64_t)aligned_len, *image->rcv_hwm_position.value_addr);
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
 }
 

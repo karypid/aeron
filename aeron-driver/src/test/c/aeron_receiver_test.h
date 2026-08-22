@@ -203,6 +203,27 @@ protected:
         return channel;
     }
 
+    static aeron_data_header_t *dataPacket(
+        buffer_t &buffer,
+        int32_t stream_id,
+        int32_t session_id,
+        size_t frame_length,
+        int32_t term_id = 0,
+        int32_t term_offset = 0)
+    {
+        auto *data_header = (aeron_data_header_t *)buffer.data();
+        data_header->frame_header.frame_length = (int32_t)frame_length;
+        data_header->frame_header.version = AERON_FRAME_HEADER_VERSION;
+        data_header->frame_header.flags = 0;
+        data_header->frame_header.type = AERON_HDR_TYPE_DATA;
+        data_header->stream_id = stream_id;
+        data_header->session_id = session_id;
+        data_header->term_id = term_id;
+        data_header->term_offset = term_offset;
+
+        return data_header;
+    }
+
     aeron_publication_image_t *createImage(
         aeron_receive_channel_endpoint_t *endpoint,
         aeron_receive_destination_t *destination,
@@ -315,20 +336,6 @@ protected:
         m_images.push_back(image);
 
         return image;
-    }
-
-    static aeron_data_header_t *dataPacket(
-        buffer_t &buffer, int32_t stream_id, int32_t session_id, int32_t term_id = 0, int32_t term_offset = 0)
-    {
-        auto *data_header = (aeron_data_header_t *)buffer.data();
-        data_header->frame_header.type = AERON_HDR_TYPE_DATA;
-        data_header->frame_header.flags = 0;
-        data_header->stream_id = stream_id;
-        data_header->session_id = session_id;
-        data_header->term_id = term_id;
-        data_header->term_offset = term_offset;
-
-        return data_header;
     }
 
     static aeron_setup_header_t *setupPacket(

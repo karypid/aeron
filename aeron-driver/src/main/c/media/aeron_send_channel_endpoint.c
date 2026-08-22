@@ -352,11 +352,15 @@ static void aeron_send_channel_apply_timestamps(
 
             for (size_t i = 0; i < iov_length; i++)
             {
-                aeron_timestamps_set_timestamp(
-                    &send_timestamp,
-                    offset,
-                    (uint8_t *)iov[i].iov_base,
-                    iov[i].iov_len);
+                struct iovec iovec = iov[i];
+                aeron_data_header_t *data_header = iovec.iov_base;
+                if (iovec.iov_len >= AERON_DATA_HEADER_LENGTH &&
+                    data_header->frame_header.frame_length > 0 &&
+                    (size_t)data_header->frame_header.frame_length <= iovec.iov_len &&
+                    AERON_HDR_TYPE_DATA == data_header->frame_header.type)
+                {
+                    aeron_timestamps_set_timestamp(&send_timestamp, offset, data_header);
+                }
             }
         }
     }
@@ -463,61 +467,23 @@ void aeron_send_channel_endpoint_dispatch(
     switch (frame_header->type)
     {
         case AERON_HDR_TYPE_NAK:
-            if (length >= sizeof(aeron_nak_header_t) && length >= (size_t)frame_header->frame_length)
-            {
-                aeron_counter_increment_release(sender->nak_messages_received_counter);
-                result = aeron_send_channel_endpoint_on_nak(endpoint, buffer, length, addr);
-            }
-            else
-            {
-                aeron_counter_increment(sender->invalid_frames_counter);
-            }
+            result = aeron_send_channel_endpoint_on_nak(sender, endpoint, buffer, length, addr);
             break;
 
         case AERON_HDR_TYPE_SM:
-            if (length >= sizeof(aeron_status_message_header_t) && length >= (size_t)frame_header->frame_length)
-            {
-                aeron_counter_increment_release(sender->status_messages_received_counter);
-                result = aeron_send_channel_endpoint_on_status_message(sender, endpoint, conductor_proxy, buffer, length, addr);
-            }
-            else
-            {
-                aeron_counter_increment(sender->invalid_frames_counter);
-            }
+            result = aeron_send_channel_endpoint_on_status_message(sender, endpoint, conductor_proxy, buffer, length, addr);
             break;
 
         case AERON_HDR_TYPE_ERR:
-            if (length >= sizeof(aeron_error_t) && length >= (size_t)frame_header->frame_length)
-            {
-                aeron_counter_increment_release(sender->error_messages_received_counter);
-                result = aeron_send_channel_endpoint_on_error(endpoint, conductor_proxy, buffer, length, addr);
-            }
-            else
-            {
-                aeron_counter_increment(sender->invalid_frames_counter);
-            }
+            result = aeron_send_channel_endpoint_on_error(sender, endpoint, conductor_proxy, buffer, length, addr);
             break;
 
         case AERON_HDR_TYPE_RTTM:
-            if (length >= sizeof(aeron_rttm_header_t) && length >= (size_t)frame_header->frame_length)
-            {
-                aeron_send_channel_endpoint_on_rttm(endpoint, buffer, length, addr);
-            }
-            else
-            {
-                aeron_counter_increment(sender->invalid_frames_counter);
-            }
+            aeron_send_channel_endpoint_on_rttm(endpoint, buffer, length, addr);
             break;
 
         case AERON_HDR_TYPE_RSP_SETUP:
-            if (length >= sizeof(aeron_response_setup_header_t) && length >= (size_t)frame_header->frame_length)
-            {
-                aeron_send_channel_endpoint_on_response_setup(endpoint, conductor_proxy, buffer, length, addr);
-            }
-            else
-            {
-                aeron_counter_increment(sender->invalid_frames_counter);
-            }
+            aeron_send_channel_endpoint_on_response_setup(endpoint, conductor_proxy, buffer, length, addr);
             break;
 
         default:
@@ -530,8 +496,21 @@ void aeron_send_channel_endpoint_dispatch(
     }
 }
 
+static bool aeron_send_channel_endpoint_is_valid_nak(aeron_nak_header_t *nak_header, int64_t term_buffer_length)
+{
+    return nak_header->term_offset >=0 &&
+        nak_header->term_offset < term_buffer_length &&
+        AERON_IS_ALIGNED(nak_header->term_offset, AERON_FRAME_ALIGNMENT) &&
+        nak_header->length >= 0 &&
+        ((int64_t)nak_header->term_offset + nak_header->length) <= term_buffer_length;
+}
+
 int aeron_send_channel_endpoint_on_nak(
-    aeron_send_channel_endpoint_t *endpoint, uint8_t *buffer, size_t length, struct sockaddr_storage *addr)
+    aeron_driver_sender_t *sender,
+    aeron_send_channel_endpoint_t *endpoint,
+    uint8_t *buffer,
+    size_t length,
+    struct sockaddr_storage *addr)
 {
     if (AERON_C_COND_EXPECT(NULL != endpoint->control_loss_generator, 0) &&
         aeron_loss_generator_should_drop_frame(
@@ -541,21 +520,6 @@ int aeron_send_channel_endpoint_on_nak(
     }
 
     aeron_nak_header_t *nak_header = (aeron_nak_header_t *)buffer;
-    int64_t key_value = aeron_map_compound_key(nak_header->stream_id, nak_header->session_id);
-    aeron_network_publication_t *publication = aeron_int64_to_ptr_hash_map_get(
-        &endpoint->publication_dispatch_map, key_value);
-
-    if (NULL != publication)
-    {
-        int result = aeron_network_publication_on_nak(publication, nak_header->term_id, nak_header->term_offset, nak_header->length);
-
-        if (0 != result)
-        {
-            AERON_APPEND_ERR("%s", "");
-        }
-
-        return result;
-    }
 
     aeron_driver_nak_message_func_t on_nak_message = endpoint->on_nak_message;
     if (NULL != on_nak_message)
@@ -571,8 +535,44 @@ int aeron_send_channel_endpoint_on_nak(
             endpoint->conductor_fields.udp_channel->original_uri);
     }
 
-    // we got a NAK for a publication that doesn't exist...
+    int64_t key_value = aeron_map_compound_key(nak_header->stream_id, nak_header->session_id);
+    aeron_network_publication_t *publication = aeron_int64_to_ptr_hash_map_get(
+        &endpoint->publication_dispatch_map, key_value);
+
+    if (NULL != publication)
+    {
+        if (aeron_send_channel_endpoint_is_valid_nak(nak_header, publication->term_buffer_length))
+        {
+            aeron_counter_increment_release(sender->nak_messages_received_counter);
+            int result = aeron_network_publication_on_nak(
+                publication,
+                nak_header->term_id,
+                nak_header->term_offset,
+                nak_header->length);
+
+            if (0 != result)
+            {
+                AERON_APPEND_ERR("%s", "");
+            }
+
+            return result;
+        }
+        else
+        {
+            aeron_counter_increment(sender->invalid_frames_counter);
+        }
+    }
+
     return 0;
+}
+
+static bool aeron_send_channel_endpoint_is_valid_status_message(aeron_status_message_header_t *header, int64_t term_buffer_length)
+{
+    return header->consumption_term_offset >= 0 &&
+        header->consumption_term_offset < term_buffer_length &&
+        AERON_IS_ALIGNED(header->consumption_term_offset, AERON_FRAME_ALIGNMENT) &&
+        header->receiver_window >= 0 &&
+        header->receiver_window <= (term_buffer_length >> 1);
 }
 
 int aeron_send_channel_endpoint_on_status_message(
@@ -594,6 +594,15 @@ int aeron_send_channel_endpoint_on_status_message(
     int64_t key_value = aeron_map_compound_key(sm_header->stream_id, sm_header->session_id);
     aeron_network_publication_t *publication = aeron_int64_to_ptr_hash_map_get(
         &endpoint->publication_dispatch_map, key_value);
+
+    if (!aeron_send_channel_endpoint_is_valid_status_message(
+        sm_header, NULL != publication ? publication->term_buffer_length : AERON_LOGBUFFER_TERM_MAX_LENGTH))
+    {
+        aeron_counter_increment(sender->invalid_frames_counter);
+        return 0;
+    }
+
+    aeron_counter_increment_release(sender->status_messages_received_counter);
 
     if (!(sm_header->frame_header.flags & AERON_STATUS_MESSAGE_HEADER_SEND_SETUP_FLAG) &&
         NULL != publication && !aeron_network_publication_is_valid_status_message(publication, buffer))
@@ -632,14 +641,29 @@ int aeron_send_channel_endpoint_on_status_message(
     return result;
 }
 
+static bool aeron_send_channel_endpoint_is_valid_error(aeron_error_header_t *error)
+{
+    return error->error_length >= 0 && error->error_length <= AERON_ERROR_MAX_TEXT_LENGTH &&
+        error->error_length + sizeof(aeron_error_header_t) <= (size_t)error->frame_header.frame_length;
+}
+
 int aeron_send_channel_endpoint_on_error(
+    aeron_driver_sender_t *sender,
     aeron_send_channel_endpoint_t *endpoint,
     aeron_driver_conductor_proxy_t *conductor_proxy,
     uint8_t *buffer,
     size_t length,
     struct sockaddr_storage *addr)
 {
-    aeron_error_t *error = (aeron_error_t *)buffer;
+    aeron_error_header_t *error = (aeron_error_header_t *)buffer;
+
+    if (!aeron_send_channel_endpoint_is_valid_error(error))
+    {
+        aeron_counter_increment(sender->invalid_frames_counter);
+        return 0;
+    }
+
+    aeron_counter_increment_release(sender->error_messages_received_counter);
 
     int64_t destination_registration_id = AERON_NULL_VALUE;
     if (NULL != endpoint->destination_tracker)
