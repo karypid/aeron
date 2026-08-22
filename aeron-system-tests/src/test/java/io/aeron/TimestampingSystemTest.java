@@ -37,8 +37,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.function.Predicate;
-
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -48,9 +46,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @ExtendWith(InterruptingTestCallback.class)
 class TimestampingSystemTest
 {
-    public static final Predicate<String> IGNORE_MEDIA_TIMESTAMPS_PREDICATE =
-        s -> s.contains("Media timestamps 'media-rcv-ts-offset' are not supported in the Java driver");
-
     private static final long SENTINEL_VALUE = -1L;
     private static final String CHANNEL_WITH_MEDIA_TIMESTAMP =
         "aeron:udp?endpoint=localhost:0|media-rcv-ts-offset=reserved";
@@ -127,7 +122,7 @@ class TimestampingSystemTest
             }
 
             final FragmentHandler fragmentHandler =
-                (buffer1, offset, length, header) -> assertNotEquals(SENTINEL_VALUE, header .reservedValue());
+                (buffer1, offset, length, header) -> assertNotEquals(SENTINEL_VALUE, header.reservedValue());
             while (1 > sub.poll(fragmentHandler, 1))
             {
                 Tests.yieldingIdle("Failed to receive message");
@@ -192,8 +187,10 @@ class TimestampingSystemTest
     void shouldNotCorruptFragmentedMessagesWhenTimestampsAreEnabled(final boolean testMediaTimestamps)
     {
         final String channel = testMediaTimestamps ? CHANNEL_WITH_MEDIA_TIMESTAMP : CHANNEL_WITH_CHANNEL_TIMESTAMPS;
-
-        systemTestWatcher.ignoreErrorsMatching(IGNORE_MEDIA_TIMESTAMPS_PREDICATE);
+        if (testMediaTimestamps)
+        {
+            assumeTrue(TestMediaDriver.shouldRunCMediaDriver());
+        }
 
         try (TestMediaDriver driver = driver();
             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName())))
@@ -201,22 +198,8 @@ class TimestampingSystemTest
             final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[16 + driver.context().mtuLength() * 2]);
             setAll(buffer, (byte)0xFF);
 
-            final Subscription sub;
-            try
-            {
-                sub = aeron.addSubscription(channel, 1000);
-            }
-            catch (final Exception e)
-            {
-                if (thisIsTheJavaDriverThenIgnoreMediaTimestampParameter(e))
-                {
-                    return;
-                }
-
-                throw e;
-            }
-
-            while (null == sub.resolvedEndpoint())
+            final Subscription sub = aeron.addSubscription(channel, 1000);
+            while (null == sub.tryResolveChannelEndpointPort())
             {
                 Tests.yieldingIdle("Failed to resolve endpoint");
             }
@@ -326,7 +309,7 @@ class TimestampingSystemTest
 
             final MutableLong sendTimestamp = new MutableLong(SENTINEL_VALUE);
             final FragmentHandler fragmentHandler =
-                (buffer1, offset, length, header) -> sendTimestamp.set(buffer1 .getLong(offset));
+                (buffer1, offset, length, header) -> sendTimestamp.set(buffer1.getLong(offset));
             while (1 > sub1.poll(fragmentHandler, 1))
             {
                 Tests.yieldingIdle("Failed to receive message");
@@ -474,10 +457,5 @@ class TimestampingSystemTest
         {
             buffer.putByte(i, value);
         }
-    }
-
-    private static boolean thisIsTheJavaDriverThenIgnoreMediaTimestampParameter(final Exception e)
-    {
-        return IGNORE_MEDIA_TIMESTAMPS_PREDICATE.test(e.getMessage());
     }
 }
