@@ -194,7 +194,7 @@ TEST_P(DataFrameValidationTest, shouldValidateDataFrame)
 }
 
 class NonDataFrameValidationTest :
-    public testing::TestWithParam<std::tuple<int16_t, int32_t>>,
+    public testing::TestWithParam<std::tuple<int16_t, size_t>>,
     public UdpChannelTestBase
 {
 };
@@ -218,7 +218,7 @@ TEST_P(NonDataFrameValidationTest, shouldValidateNonDataFrames)
     header.type = std::get<0>(GetParam());
     header.version = AERON_FRAME_HEADER_VERSION;
 
-    int32_t min_size = std::get<1>(GetParam());
+    size_t min_size = std::get<1>(GetParam());
 
     // length is below min size
     EXPECT_FALSE(aeron_is_frame_valid(&header, AERON_FRAME_HEADER_LENGTH));
