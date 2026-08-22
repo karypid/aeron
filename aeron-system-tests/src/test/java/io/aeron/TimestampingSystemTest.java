@@ -37,8 +37,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static java.util.Objects.requireNonNull;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -106,7 +108,7 @@ class TimestampingSystemTest
         {
             final Subscription sub = aeron.addSubscription(CHANNEL_WITH_MEDIA_TIMESTAMP, 1000);
 
-            while (null == sub.resolvedEndpoint())
+            while (null == sub.tryResolveChannelEndpointPort())
             {
                 Tests.yieldingIdle("Failed to resolve endpoint");
             }
@@ -141,7 +143,7 @@ class TimestampingSystemTest
         {
             final Subscription sub = aeron.addSubscription(CHANNEL_WITH_CHANNEL_TIMESTAMPS, 1000);
 
-            while (null == sub.resolvedEndpoint())
+            while (null == sub.tryResolveChannelEndpointPort())
             {
                 Tests.yieldingIdle("Failed to resolve endpoint");
             }
@@ -218,10 +220,13 @@ class TimestampingSystemTest
                 {
                     received.increment();
 
-                    for (int i = 16; i < length; i++)
-                    {
-                        assertEquals((byte)0xFF, buffer1.getByte(offset + i));
-                    }
+                    final long receiveTimestamp = buffer1.getLong(offset + RECEIVE_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
+                    final long sendTimestamp = buffer1.getLong(offset + SEND_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
+                    assertNotEquals((byte)0xFF, buffer1.getByte(offset + RECEIVE_TIMESTAMP_OFFSET));
+                    assertNotEquals((byte)0xFF, buffer1.getByte(offset + SEND_TIMESTAMP_OFFSET));
+                    assertNotEquals(-1L, receiveTimestamp);
+                    assertNotEquals(-1L, sendTimestamp);
+                    assertThat(sendTimestamp, lessThanOrEqualTo(receiveTimestamp));
                 });
 
             final int toSend = 100;
