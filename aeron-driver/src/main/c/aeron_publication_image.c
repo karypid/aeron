@@ -667,9 +667,12 @@ int32_t aeron_publication_image_validate_packet(
     int16_t frame_type = -1;
     struct timespec receive_timestamp =
     {
-        .tv_sec = -1,
+        .tv_sec = 0,
         .tv_nsec = 0
     };
+    bool receive_timestamps_enabled =
+        (destination->transport.timestamp_flags & (AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP | AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP)) &&
+        NULL != image->endpoint;
     do
     {
         aeron_data_header_t *frame = (aeron_data_header_t *)(buffer + offset);
@@ -696,10 +699,10 @@ int32_t aeron_publication_image_validate_packet(
             break;
         }
 
-        if (AERON_HDR_TYPE_DATA == frame_type &&
+        if (receive_timestamps_enabled &&
+            AERON_HDR_TYPE_DATA == frame_type &&
             AERON_DATA_HEADER_BEGIN_FLAG == (frame->frame_header.flags & AERON_DATA_HEADER_BEGIN_FLAG) &&
-            (size_t)offset + (size_t)frame->frame_header.frame_length <= length &&
-            NULL != image->endpoint)
+            (size_t)offset + (size_t)frame->frame_header.frame_length <= length)
         {
             if (AERON_UDP_CHANNEL_TRANSPORT_MEDIA_RCV_TIMESTAMP & destination->transport.timestamp_flags)
             {
@@ -711,7 +714,7 @@ int32_t aeron_publication_image_validate_packet(
 
             if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_RCV_TIMESTAMP & destination->transport.timestamp_flags)
             {
-                if (-1 == receive_timestamp.tv_sec)
+                if (0 == receive_timestamp.tv_sec)
                 {
                     aeron_clock_gettime_realtime(&receive_timestamp);
                 }
