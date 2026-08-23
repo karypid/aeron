@@ -90,15 +90,15 @@ public class DebugReceiveChannelEndpoint extends ReceiveChannelEndpoint
     @Override
     public int sendTo(final ByteBuffer buffer, final InetSocketAddress remoteAddress)
     {
-        int result = buffer.remaining();
+        int count = buffer.remaining();
 
-        controlBuffer.wrap(buffer, buffer.position(), buffer.remaining());
-        if (!controlLossGenerator.shouldDropFrame(remoteAddress, controlBuffer, buffer.remaining()))
+        controlBuffer.wrap(buffer, buffer.position(), count);
+        if (!controlLossGenerator.shouldDropFrame(remoteAddress, controlBuffer, count))
         {
-            result = super.sendTo(buffer, remoteAddress);
+            count = super.sendTo(buffer, remoteAddress);
         }
 
-        return result;
+        return count;
     }
 
     /**
@@ -134,7 +134,7 @@ public class DebugReceiveChannelEndpoint extends ReceiveChannelEndpoint
         final InetSocketAddress srcAddress,
         final int transportIndex)
     {
-        if (!dataLossGenerator.shouldDropFrame(srcAddress, buffer, header.frameLength()))
+        if (!dataLossGenerator.shouldDropFrame(srcAddress, buffer, length))
         {
             super.onSetupMessage(header, buffer, length, srcAddress, transportIndex);
         }
@@ -151,7 +151,7 @@ public class DebugReceiveChannelEndpoint extends ReceiveChannelEndpoint
         final InetSocketAddress srcAddress,
         final int transportIndex)
     {
-        if (!dataLossGenerator.shouldDropFrame(srcAddress, buffer, header.frameLength()))
+        if (!dataLossGenerator.shouldDropFrame(srcAddress, buffer, length))
         {
             super.onRttMeasurement(header, buffer, length, srcAddress, transportIndex);
         }

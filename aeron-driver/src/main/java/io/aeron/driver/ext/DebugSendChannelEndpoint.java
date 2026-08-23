@@ -104,7 +104,7 @@ public class DebugSendChannelEndpoint extends SendChannelEndpoint
         final int length,
         final InetSocketAddress srcAddress, final DriverConductorProxy conductorProxy)
     {
-        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, msg.frameLength()))
+        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, length))
         {
             super.onStatusMessage(msg, buffer, length, srcAddress, conductorProxy);
         }
@@ -120,7 +120,7 @@ public class DebugSendChannelEndpoint extends SendChannelEndpoint
         final int length,
         final InetSocketAddress srcAddress)
     {
-        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, msg.frameLength()))
+        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, length))
         {
             super.onNakMessage(msg, buffer, length, srcAddress);
         }
@@ -136,7 +136,7 @@ public class DebugSendChannelEndpoint extends SendChannelEndpoint
         final int length,
         final InetSocketAddress srcAddress)
     {
-        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, msg.frameLength()))
+        if (!controlLossGenerator.shouldDropFrame(srcAddress, msg, length))
         {
             super.onRttMeasurement(msg, buffer, length, srcAddress);
         }
