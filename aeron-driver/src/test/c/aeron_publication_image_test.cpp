@@ -1250,6 +1250,8 @@ TEST_F(PublicationImageTest, shouldAllowHeartBeats)
     EXPECT_EQ(
         aeron_logbuffer_compute_position(term_id, term_offset, image.position_bits_to_shift, image.initial_term_id),
         rcv_hwm_position);
+
+    aeron_free(image.connections.array);
 }
 
 TEST_F(PublicationImageTest, shouldAssignPacketTimestamps)
