@@ -226,7 +226,7 @@ TEST_P(NonDataFrameValidationTest, shouldValidateNonDataFrames)
 
     // frame_length is outside of the packet boundaries
     header.frame_length = min_size + 1;
-    if (header.type == AERON_HDR_TYPE_SM || header.type == AERON_HDR_TYPE_SETUP)
+    if (header.type == AERON_HDR_TYPE_SETUP)
     {
         // ATS copies original `frame_length` to a new frame which exceeds `packet_length`
         EXPECT_TRUE(aeron_is_frame_valid(&header, min_size));
