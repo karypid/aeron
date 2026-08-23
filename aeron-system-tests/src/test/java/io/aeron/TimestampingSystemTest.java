@@ -40,6 +40,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static java.util.Objects.requireNonNull;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -49,6 +50,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class TimestampingSystemTest
 {
     private static final long SENTINEL_VALUE = -1L;
+    private static final ReservedValueSupplier RESERVED_VALUE_SUPPLIER =
+        (termBuffer, termOffset, frameLength) -> SENTINEL_VALUE;
     private static final String CHANNEL_WITH_MEDIA_TIMESTAMP =
         "aeron:udp?endpoint=localhost:0|media-rcv-ts-offset=reserved";
     private static final int RECEIVE_TIMESTAMP_OFFSET = 0;
@@ -118,7 +121,7 @@ class TimestampingSystemTest
 
             Tests.awaitConnected(pub);
 
-            while (0 > pub.offer(buffer, 0, buffer.capacity(), (termBuffer, termOffset, frameLength) -> SENTINEL_VALUE))
+            while (0 > pub.offer(buffer, 0, buffer.capacity(), RESERVED_VALUE_SUPPLIER))
             {
                 Tests.yieldingIdle("Failed to offer message");
             }
@@ -220,13 +223,18 @@ class TimestampingSystemTest
                 {
                     received.increment();
 
-                    final long receiveTimestamp = buffer1.getLong(offset + RECEIVE_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
-                    final long sendTimestamp = buffer1.getLong(offset + SEND_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
-                    assertNotEquals((byte)0xFF, buffer1.getByte(offset + RECEIVE_TIMESTAMP_OFFSET));
-                    assertNotEquals((byte)0xFF, buffer1.getByte(offset + SEND_TIMESTAMP_OFFSET));
-                    assertNotEquals(-1L, receiveTimestamp);
-                    assertNotEquals(-1L, sendTimestamp);
-                    assertThat(sendTimestamp, lessThanOrEqualTo(receiveTimestamp));
+                    if (testMediaTimestamps)
+                    {
+                        assertNotEquals(SENTINEL_VALUE, header.reservedValue());
+                    }
+                    else
+                    {
+                        final long receiveTimestamp = buffer1.getLong(offset + RECEIVE_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
+                        final long sendTimestamp = buffer1.getLong(offset + SEND_TIMESTAMP_OFFSET, LITTLE_ENDIAN);
+                        assertThat(receiveTimestamp, greaterThan(0L));
+                        assertThat(sendTimestamp, greaterThan(0L));
+                        assertThat(sendTimestamp, lessThanOrEqualTo(receiveTimestamp));
+                    }
                 });
 
             final int toSend = 100;
@@ -234,7 +242,7 @@ class TimestampingSystemTest
 
             while (received.get() < toSend)
             {
-                if (sent < toSend && 0 < pub.offer(buffer, 0, buffer.capacity()))
+                if (sent < toSend && 0 < pub.offer(buffer, 0, buffer.capacity(), RESERVED_VALUE_SUPPLIER))
                 {
                     sent++;
                 }
