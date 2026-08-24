@@ -21,21 +21,29 @@ import io.aeron.driver.NetworkPublication;
 import io.aeron.driver.status.SystemCounterDescriptor;
 import io.aeron.driver.status.SystemCounters;
 import io.aeron.logbuffer.LogBufferDescriptor;
+import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.protocol.ErrorFlyweight;
 import io.aeron.protocol.NakFlyweight;
 import io.aeron.protocol.StatusMessageFlyweight;
 import org.agrona.CloseHelper;
 import org.agrona.concurrent.CachedNanoClock;
+import org.agrona.concurrent.EpochNanoClock;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 
 import static io.aeron.driver.media.SendChannelEndpoint.DESTINATION_TIMEOUT;
+import static java.nio.ByteOrder.LITTLE_ENDIAN;
+import static org.agrona.BitUtil.SIZE_OF_LONG;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -55,12 +63,15 @@ class SendChannelEndpointTest
     private final DriverConductorProxy mockConductorProxy = mock(DriverConductorProxy.class);
     private final CachedNanoClock nanoClock = new CachedNanoClock();
     private final AtomicCounter[] systemCounters = new AtomicCounter[SystemCounterDescriptor.values().length];
+    private final EpochNanoClock sendTimestampClock = mock(EpochNanoClock.class);
+    private final DataHeaderFlyweight header = new DataHeaderFlyweight();
 
     private final MediaDriver.Context context = new MediaDriver.Context()
         .systemCounters(mockSystemCounters)
         .cachedNanoClock(nanoClock)
         .senderCachedNanoClock(nanoClock)
         .receiverCachedNanoClock(nanoClock)
+        .channelSendTimestampClock(sendTimestampClock)
         .receiveChannelEndpointThreadLocals(new ReceiveChannelEndpointThreadLocals())
         .senderPortManager(new WildcardPortManager(WildcardPortManager.EMPTY_PORT_RANGE, true))
         .receiverPortManager(new WildcardPortManager(WildcardPortManager.EMPTY_PORT_RANGE, false));
@@ -206,5 +217,268 @@ class SendChannelEndpointTest
         final InOrder inOrder = inOrder(invalidPackets, smReceived);
         inOrder.verify(invalidPackets).increment();
         inOrder.verifyNoMoreInteractions();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { 0, DataHeaderFlyweight.HEADER_LENGTH - 1 })
+    void applySendChannelTimestampIsANoOpIfPacketIsShorterThanDataFrame(final int packetLength)
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555|channel-snd-ts-offset=0"),
+            mockStatusIndicator,
+            context);
+        final ByteBuffer buffer = ByteBuffer.allocate(10 + packetLength);
+        buffer.position(10);
+        assertEquals(packetLength, buffer.remaining());
+
+        endpoint.applyChannelSendTimestamp(buffer);
+
+        verifyNoInteractions(sendTimestampClock);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { -1, 0 })
+    void applySendChannelTimestampIsANoOpIfFirstFrameIsEmpty(final int firstFrameLength)
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555|channel-snd-ts-offset=16"),
+            mockStatusIndicator,
+            context);
+        final ByteBuffer buffer = ByteBuffer.allocate(DataHeaderFlyweight.HEADER_LENGTH);
+        assertEquals(DataHeaderFlyweight.HEADER_LENGTH, buffer.remaining());
+        header.wrap(buffer);
+        header.frameLength(firstFrameLength);
+
+        endpoint.applyChannelSendTimestamp(buffer);
+
+        verifyNoInteractions(sendTimestampClock);
+    }
+
+    @Test
+    @SuppressWarnings("MethodLength")
+    void applySendChannelTimestampsToAllBeginDataFramesWithinAPacketWhenOffsetIsWithinMessageBody()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555|channel-snd-ts-offset=16"),
+            mockStatusIndicator,
+            context);
+        final ByteBuffer buffer = ByteBuffer.allocate(1024);
+        final int position = 64;
+        buffer.position(position);
+        assertEquals(960, buffer.remaining());
+        final long sendTimestampNs = 47239472340932L;
+        when(sendTimestampClock.nanoTime()).thenReturn(sendTimestampNs).thenThrow(new RuntimeException("second call"));
+
+        // empty data frame
+        header.wrap(buffer, position, 32);
+        header
+            .frameLength(32)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // padding frame
+        header.wrap(buffer, position + 32, 32);
+        header
+            .frameLength(128)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_PAD);
+
+        // start of the fragmented frame
+        header.wrap(buffer, position + 160, 32);
+        header
+            .frameLength(56)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_FLAG)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // continues
+        header.wrap(buffer, position + 224, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags((short)0)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // continues
+        header.wrap(buffer, position + 352, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags((short)0)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // end of fragmented frame
+        header.wrap(buffer, position + 480, 32);
+        header
+            .frameLength(70)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.END_FLAG)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // non-fragmented message
+        header.wrap(buffer, position + 576, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // padding frame
+        header.wrap(buffer, position + 704, 32);
+        header
+            .frameLength(4096)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_PAD);
+
+        endpoint.applyChannelSendTimestamp(buffer);
+
+        final int tsOffset = DataHeaderFlyweight.DATA_OFFSET + 16;
+
+        // padding frame is skipped
+        header.wrap(buffer, position + 32, tsOffset + SIZE_OF_LONG);
+        assertEquals(0, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        // fragment message start
+        header.wrap(buffer, position + 160, tsOffset + SIZE_OF_LONG);
+        assertEquals(sendTimestampNs, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        header.wrap(buffer, position + 224, tsOffset + SIZE_OF_LONG);
+        assertEquals(0, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        header.wrap(buffer, position + 352, tsOffset + SIZE_OF_LONG);
+        assertEquals(0, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        // fragment message end
+        header.wrap(buffer, position + 480, tsOffset + SIZE_OF_LONG);
+        assertEquals(0, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        // non-fragmented message
+        header.wrap(buffer, position + 576, tsOffset + SIZE_OF_LONG);
+        assertEquals(sendTimestampNs, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        // last padding frame
+        header.wrap(buffer, position + 704, tsOffset + SIZE_OF_LONG);
+        assertEquals(0, header.getLong(tsOffset, LITTLE_ENDIAN));
+
+        verify(sendTimestampClock).nanoTime();
+        verifyNoMoreInteractions(sendTimestampClock);
+    }
+
+    @Test
+    @SuppressWarnings("MethodLength")
+    void applySendChannelTimestampsToAllBeginDataFramesWithinAPacketWhenUsingReservedValue()
+    {
+        endpoint = new SendChannelEndpoint(
+            UdpChannel.parse("aeron:udp?endpoint=localhost:5555|channel-snd-ts-offset=reserved"),
+            mockStatusIndicator,
+            context);
+        final ByteBuffer buffer = ByteBuffer.allocate(1024);
+        final int position = 64;
+        buffer.position(position);
+        assertEquals(960, buffer.remaining());
+        final long sendTimestampNs = 12391236812638L;
+        when(sendTimestampClock.nanoTime()).thenReturn(sendTimestampNs).thenThrow(new RuntimeException("second call"));
+
+        // empty data frame
+        header.wrap(buffer, position, 32);
+        header
+            .frameLength(32)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // padding frame
+        header.wrap(buffer, position + 32, 32);
+        header
+            .frameLength(128)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_PAD);
+
+        // start of the fragmented frame
+        header.wrap(buffer, position + 160, 32);
+        header
+            .frameLength(56)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_FLAG)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // continues
+        header.wrap(buffer, position + 224, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags((short)0)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // continues
+        header.wrap(buffer, position + 352, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags((short)0)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // end of fragmented frame
+        header.wrap(buffer, position + 480, 32);
+        header
+            .frameLength(70)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.END_FLAG)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // non-fragmented message
+        header.wrap(buffer, position + 576, 32);
+        header
+            .frameLength(100)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_DATA);
+
+        // padding frame
+        header.wrap(buffer, position + 704, 32);
+        header
+            .frameLength(4096)
+            .version(DataHeaderFlyweight.CURRENT_VERSION)
+            .flags(DataHeaderFlyweight.BEGIN_AND_END_FLAGS)
+            .headerType(DataHeaderFlyweight.HDR_TYPE_PAD);
+
+        endpoint.applyChannelSendTimestamp(buffer);
+
+        // empty data frame
+        header.wrap(buffer, position, 32);
+        assertEquals(sendTimestampNs, header.reservedValue());
+
+        // padding frame is skipped
+        header.wrap(buffer, position + 32, 32);
+        assertEquals(0, header.reservedValue());
+
+        // fragment message start
+        header.wrap(buffer, position + 160, 32);
+        assertEquals(sendTimestampNs, header.reservedValue());
+
+        header.wrap(buffer, position + 224, 32);
+        assertEquals(0, header.reservedValue());
+
+        header.wrap(buffer, position + 352, 32);
+        assertEquals(0, header.reservedValue());
+
+        // fragment message end
+        header.wrap(buffer, position + 480, 32);
+        assertEquals(0, header.reservedValue());
+
+        // non-fragmented message
+        header.wrap(buffer, position + 576, 32);
+        assertEquals(sendTimestampNs, header.reservedValue());
+
+        // last padding frame
+        header.wrap(buffer, position + 704, 32);
+        assertEquals(0, header.reservedValue());
+
+        verify(sendTimestampClock).nanoTime();
+        verifyNoMoreInteractions(sendTimestampClock);
     }
 }
