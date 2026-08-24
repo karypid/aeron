@@ -343,25 +343,39 @@ static void aeron_send_channel_apply_timestamps(
     struct iovec *iov,
     size_t iov_length)
 {
-    if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_SND_TIMESTAMP & endpoint->transport.timestamp_flags)
-    {
-        struct timespec send_timestamp;
-        if (0 == aeron_clock_gettime_realtime(&send_timestamp))
-        {
-            int32_t offset = endpoint->conductor_fields.udp_channel->channel_snd_timestamp_offset;
+    struct timespec send_timestamp = {0};
+    int32_t ts_offset = endpoint->conductor_fields.udp_channel->channel_snd_timestamp_offset;
 
-            for (size_t i = 0; i < iov_length; i++)
+    for (size_t i = 0; i < iov_length; i++)
+    {
+        struct iovec iovec = iov[i];
+        if (iovec.iov_len >= AERON_DATA_HEADER_LENGTH)
+        {
+            size_t offset = 0;
+            do
             {
-                struct iovec iovec = iov[i];
-                aeron_data_header_t *data_header = iovec.iov_base;
-                if (iovec.iov_len >= AERON_DATA_HEADER_LENGTH &&
-                    data_header->frame_header.frame_length > 0 &&
-                    (size_t)data_header->frame_header.frame_length <= iovec.iov_len &&
-                    AERON_HDR_TYPE_DATA == data_header->frame_header.type)
+                aeron_data_header_t *data_header = ((aeron_data_header_t *)iovec.iov_base + offset);
+                if (data_header->frame_header.frame_length <= 0)
                 {
-                    aeron_timestamps_set_timestamp(&send_timestamp, offset, data_header);
+                    break;
                 }
+
+                if (AERON_HDR_TYPE_DATA == data_header->frame_header.type &&
+                    AERON_DATA_HEADER_BEGIN_FLAG == (AERON_DATA_HEADER_BEGIN_FLAG & data_header->frame_header.flags))
+                {
+                    if (0 == send_timestamp.tv_sec)
+                    {
+                        if (0 != aeron_clock_gettime_realtime(&send_timestamp))
+                        {
+                            break;
+                        }
+                    }
+                    aeron_timestamps_set_timestamp(&send_timestamp, ts_offset, data_header);
+                }
+
+                offset += AERON_ALIGN(data_header->frame_header.frame_length, AERON_FRAME_ALIGNMENT);
             }
+            while (offset < iovec.iov_len);
         }
     }
 }
@@ -388,7 +402,10 @@ int aeron_send_channel_send(
         return 0;
     }
 
-    aeron_send_channel_apply_timestamps(endpoint, iov, iov_length);
+    if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_SND_TIMESTAMP & endpoint->transport.timestamp_flags)
+    {
+        aeron_send_channel_apply_timestamps(endpoint, iov, iov_length);
+    }
 
     if (NULL == endpoint->destination_tracker)
     {
@@ -411,7 +428,10 @@ int aeron_send_channel_send_endpoint_address(
     size_t iov_length,
     int64_t *bytes_sent)
 {
-    aeron_send_channel_apply_timestamps(endpoint, iov, iov_length);
+    if (AERON_UDP_CHANNEL_TRANSPORT_CHANNEL_SND_TIMESTAMP & endpoint->transport.timestamp_flags)
+    {
+        aeron_send_channel_apply_timestamps(endpoint, iov, iov_length);
+    }
 
     return endpoint->data_paths->send_func(
             endpoint->data_paths, &endpoint->transport, endpoint_address, iov, iov_length, bytes_sent);
