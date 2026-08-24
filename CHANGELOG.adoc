@@ -91,6 +91,18 @@ support for old names. (https://github.com/aeron-io/aeron/pull/2111[#2111])
 it. (https://github.com/aeron-io/aeron/pull/2119[#2119])
 * **[Client/C/C{plus}{plus}]** Surface errors from the archive as the actual errors from the archive instead of using a
 generic error. (https://github.com/aeron-io/aeron/pull/2108[#2108])
+* **[Driver/C]** Reduce the command buffer length to `128k` as the previous size (`128m`) was unnecessarily large.
+* **[Driver/Java]** Pass packet length into `LossGenerator#shouldDropFrame` calls instead of `frameLength`, i.e. align
+behavior with the C driver.
+* **[Driver/C]** Validate all frames in a received packet before inserting into a log buffer.
+* **[Cluster]** Send a termination request to the ClusteredServiceContainer when the ConsensusModuleAgent is closed.
+(https://github.com/aeron-io/aeron/pull/2093[#2093])
+* **[Archive]** When scanning a segment file ensure that the correct offset is used with the io length sized buffer.
+* **[Archive]** Close `ControlSession` only if the request came from the same as image that was used to create it.
+* **[Archive]** Only allow control requests if they come from the same source as the `ControlSession` itself.
+* **[Archive]** Enforce max concurrent recordings based on the successful calls to `startRecording/extendRecording`
+rather than the number of the `RecordingSessions` which are created lazily when publication connects.
+* **[Client/Java]** Move to zero garbage printing of IP addresses for Resolution frames.
 * **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.6.0[Agrona 2.6.0].
 * **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.40.1[SBE 1.40.1].
 * **[Java]** Upgrade to `Gradle` 9.7.1.
