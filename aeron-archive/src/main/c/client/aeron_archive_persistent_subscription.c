@@ -34,7 +34,7 @@
 static inline int aeron_archive_persistent_subscription_errcode(void)
 {
     int errcode = aeron_errcode();
-    return errcode < 0 ? -errcode : errcode;
+    return errcode < 0 ? -errcode : AERON_ERROR_CODE_GENERIC_ERROR;
 }
 
 static void aeron_archive_persistent_subscription_async_archive_op_init(
