@@ -374,7 +374,6 @@ void aeron_driver_native_resource_agent_on_resolve_address(
     }
     else
     {
-        // FIXME: Store resolved address in the success state instead of `aeron_name_resolver_async_resolve_t->resolved_address`
         AERON_SET_RELEASE(cmd->result->state, AERON_DRIVER_NATIVE_RESOURCE_AGENT_COMMAND_STATE_SUCCEEDED);
     }
 }
