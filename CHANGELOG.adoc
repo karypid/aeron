@@ -1,6 +1,6 @@
 = Aeron Releases
 
-== 1.53.0 (unreleased)
+== 1.53.0 (2026-08-26)
 
 === New & Noteworthy
 
