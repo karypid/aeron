@@ -546,8 +546,8 @@ public final class NetworkPublication
             initialTermId);
 
         final long sndPos = senderPosition.get();
-        final int termLength = termBufferLength;
-        return smPos >= (sndPos - (termLength >> 1)) && smPos <= (sndPos + termLength);
+        final int halfTerm = termBufferLength >> 1;
+        return smPos >= (sndPos - halfTerm) && smPos <= (sndPos + termBufferLength + halfTerm);
     }
 
     /**
