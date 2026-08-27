@@ -23,6 +23,12 @@ archive clients.
 ** Add additional error code to user string conversion in the `aeron_error.c` implementation.
 ** Translate the Archive error codes to the user error codes in the C aeron archive client and async client.
 
+* **Breaking:** **[Archive]** Remove support for `ConnectRequest` (`templateId = 2`) message which allowed
+unauthenticated login to Archive. This message was not used by official Archive clients used since
+<<1.24.0 (2019-11-24)>>.
++
+NOTE: The corresponding logging event `CMD_IN_CONNECT` was also removed.
+
 * Introduce more distinct Aeron-specific thread names across all modules/components,
 configurable via the new `aeron.thread.naming` system property:
 +
@@ -31,11 +37,9 @@ configurable via the new `aeron.thread.naming` system property:
 ** `new` - use new standardized names (e.g. `aeron-md-snd`, `aeron-md-rcv`, `aeron-md-cnd`)
 --
 
-* **Breaking:** **[Archive]** Remove support for `ConnectRequest` (`templateId = 2`) message which allowed
-unauthenticated login to Archive. This message was not used by official Archive clients used since
-<<1.24.0 (2019-11-24)>>.
-+
-NOTE: The corresponding logging event `CMD_IN_CONNECT` was also removed.
+* **[Driver]** https://github.com/aeron-io/aeron/wiki/Channel-Configuration#timestamps[Outgoing and incoming timestamps]
+(`media-rcv-ts-offset`, `channel-rcv-ts-offset`,`channel-snd-ts-offset`) are now applied to all messages within a packet
+sent/received not just the first message.
 
 === Changelog
 
@@ -103,6 +107,9 @@ behavior with the C driver.
 * **[Archive]** Enforce max concurrent recordings based on the successful calls to `startRecording/extendRecording`
 rather than the number of the `RecordingSessions` which are created lazily when publication connects.
 * **[Client/Java]** Move to zero garbage printing of IP addresses for Resolution frames.
+* **[Driver]** Adjust strict `SM` validation, i.e. allow positions with half a term behind and up to 1.5 terms ahead of
+the `snd-pos`.
+* **[Driver/C]** Return early if adding command failed due to full driver command buffer.
 * **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.6.0[Agrona 2.6.0].
 * **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.40.1[SBE 1.40.1].
 * **[Java]** Upgrade to `Gradle` 9.7.1.
@@ -111,6 +118,12 @@ rather than the number of the `RecordingSessions` which are created lazily when 
 * **[Java]** Upgrade to `Shadow` 9.6.1.
 * **[Java]** Upgrade to `Versions` 0.61.0.
 * **[Java]** Upgrade to `jackson-dataformat-cbor` 3.2.2.
+
+== 1.52.3 (2026-08-27)
+
+* **[Driver]** Adjust strict `SM` validation, i.e. allow positions with half a term behind and up to 1.5 terms ahead of
+the `snd-pos`.
+* **[Driver/C]** Return early if adding command failed due to full driver command buffer.
 
 == 1.52.2 (2026-07-10)
 
