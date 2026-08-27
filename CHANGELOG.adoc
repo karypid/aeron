@@ -1,5 +1,9 @@
 = Aeron Releases
 
+== 1.54.0 (unreleased)
+
+* **[Cluster]** Treat Cluster membership query errors as warnings.
+
 == 1.53.0 (2026-08-26)
 
 === New & Noteworthy
