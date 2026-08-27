@@ -110,6 +110,9 @@ rather than the number of the `RecordingSessions` which are created lazily when 
 * **[Driver]** Adjust strict `SM` validation, i.e. allow positions with half a term behind and up to 1.5 terms ahead of
 the `snd-pos`.
 * **[Driver/C]** Return early if adding command failed due to full driver command buffer.
+* **[Driver/C]** Fix potential log buffer memory leak upon driver termination, i.e. drain pending free log buffer
+commands.
+* **[Driver/C]** Reduce the command buffer length to 128k as the previous size (128m) was unnecessarily large.
 * **[Java]** Upgrade to https://github.com/aeron-io/agrona/releases/tag/2.6.0[Agrona 2.6.0].
 * **[Java]** Upgrade to https://github.com/aeron-io/simple-binary-encoding/releases/tag/1.40.1[SBE 1.40.1].
 * **[Java]** Upgrade to `Gradle` 9.7.1.
@@ -124,6 +127,9 @@ the `snd-pos`.
 * **[Driver]** Adjust strict `SM` validation, i.e. allow positions with half a term behind and up to 1.5 terms ahead of
 the `snd-pos`.
 * **[Driver/C]** Return early if adding command failed due to full driver command buffer.
+* **[Driver/C]** Fix potential log buffer memory leak upon driver termination, i.e. drain pending free log buffer
+commands.
+* **[Driver/C]** Reduce the command buffer length to 128k as the previous size (128m) was unnecessarily large.
 
 == 1.52.2 (2026-07-10)
 
