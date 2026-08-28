@@ -75,16 +75,16 @@ public interface DriverEventLogger
     /**
      * Log a frame coming in from the media.
      *
-     * @param dstAddress  for the frame.
-     * @param dstPort     for the frame.
+     * @param srcAddress  for the frame.
+     * @param srcPort     for the frame.
      * @param buffer      containing the frame.
      * @param offset      in the buffer at which the frame begins.
      * @param frameLength of the frame.
      */
     @LoggerMethod(eventCode = "FRAME_IN", bufferView = { "buffer", "offset", "frameLength" })
     default void logFrameIn(
-        final InetAddress dstAddress,
-        final int dstPort,
+        final InetAddress srcAddress,
+        final int srcPort,
         @Tag(AERON_PROTOCOL_TAG) @AllowTruncate final DirectBuffer buffer,
         final int offset,
         final int frameLength)

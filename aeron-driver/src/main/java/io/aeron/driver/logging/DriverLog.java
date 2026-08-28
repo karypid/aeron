@@ -116,13 +116,13 @@ public final class DriverLog
     /**
      * Log a frame coming in from the media.
      *
-     * @param dstAddress  for the frame.
+     * @param srcAddress  for the frame.
      * @param buffer      containing the frame.
      * @param offset      in the buffer at which the frame begins.
      * @param frameLength of the frame.
      */
     public static void logFrameIn(
-        final InetSocketAddress dstAddress,
+        final InetSocketAddress srcAddress,
         final DirectBuffer buffer,
         final int offset,
         final int frameLength)
@@ -132,7 +132,7 @@ public final class DriverLog
             return;
         }
 
-        LOGGER.logFrameIn(dstAddress.getAddress(), dstAddress.getPort(), buffer, offset, frameLength);
+        LOGGER.logFrameIn(srcAddress.getAddress(), srcAddress.getPort(), buffer, offset, frameLength);
     }
 
     /**
