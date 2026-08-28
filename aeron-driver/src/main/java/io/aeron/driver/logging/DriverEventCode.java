@@ -69,18 +69,15 @@ public enum DriverEventCode implements EventCode
     /**
      * Cleanup publication event.
      */
-    REMOVE_PUBLICATION_CLEANUP(14
-    ),
+    REMOVE_PUBLICATION_CLEANUP(14),
     /**
      * Cleanup subscription event.
      */
-    REMOVE_SUBSCRIPTION_CLEANUP(15
-    ),
+    REMOVE_SUBSCRIPTION_CLEANUP(15),
     /**
      * Cleanup image event.
      */
-    REMOVE_IMAGE_CLEANUP(16
-    ),
+    REMOVE_IMAGE_CLEANUP(16),
     /**
      * On unavailable image response.
      */
@@ -164,8 +161,7 @@ public enum DriverEventCode implements EventCode
     /**
      * Untethered subscription state change.
      */
-    UNTETHERED_SUBSCRIPTION_STATE_CHANGE(45
-    ),
+    UNTETHERED_SUBSCRIPTION_STATE_CHANGE(45),
     /**
      * Name resolution neighbor added.
      */
@@ -185,8 +181,7 @@ public enum DriverEventCode implements EventCode
     /**
      * Name resolution resolve.
      */
-    NAME_RESOLUTION_RESOLVE(50
-    ),
+    NAME_RESOLUTION_RESOLVE(50),
     /**
      * Free text event.
      */
@@ -194,13 +189,11 @@ public enum DriverEventCode implements EventCode
     /**
      * Name resolution lookup.
      */
-    NAME_RESOLUTION_LOOKUP(52
-    ),
+    NAME_RESOLUTION_LOOKUP(52),
     /**
      * Name resolution host name.
      */
-    NAME_RESOLUTION_HOST_NAME(53
-    ),
+    NAME_RESOLUTION_HOST_NAME(53),
 
     /**
      * Nak sent.
@@ -210,8 +203,7 @@ public enum DriverEventCode implements EventCode
     /**
      * Resend data upon Nak.
      */
-    RESEND(55
-    ),
+    RESEND(55),
 
     /**
      * Remove destination by id.
