@@ -122,7 +122,7 @@ class DriverEventLoggerCborImplTest
             eq(DriverEventCode.FRAME_IN.name()),
             anyLong());
         inOrder.verify(mockLoggingCallback).onValue(
-            "dstAddress", IPV4_TAG, new UnsafeBuffer(address.getAddress().getAddress()));
+            "srcAddress", IPV4_TAG, new UnsafeBuffer(address.getAddress().getAddress()));
         inOrder.verify(mockLoggingCallback).onValue("buffer", AERON_PROTOCOL_TAG, new UnsafeBuffer(backing));
         inOrder.verify(mockLoggingCallback).onFooter(false);
     }
@@ -139,7 +139,7 @@ class DriverEventLoggerCborImplTest
         drain();
 
         verify(mockLoggingCallback).onValue(
-            eq("dstAddress"), eq(IPV6_TAG), eq(new UnsafeBuffer(address.getAddress().getAddress())));
+            eq("srcAddress"), eq(IPV6_TAG), eq(new UnsafeBuffer(address.getAddress().getAddress())));
     }
 
     @Test
