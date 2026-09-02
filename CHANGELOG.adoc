@@ -568,7 +568,15 @@ but is now explicitly enforced via the ClusteredServiceContainer.Configuration.M
 * **[Java]** Upgrade to `Versions` 0.54.0.
 * **[C]** Upgrade to `CMake` 4.3.2.
 
+== 1.50.5 (2026-09-02)
+
+* **[Driver/Java]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing
+spies mutated the array that the sender thread was iterating over.
+* **[Driver/C]** Fix a race condition when there are only spies and spies simulate connection, i.e. adding/removing
+spies mutated the array that the sender thread was iterating over.
+
 == 1.50.4 (2026-03-20)
+
 * **[Breaking]**: **[Client/C{plus}{plus} Wrapper]** Remove `close()` method from `Publication/ExclusivePublication`,
 i.e. the underlying `aeron_publication_t/aeron_exclusive_publication_t` will be closed when the corresponding C{plus}{plus}
 object is destroyed.
