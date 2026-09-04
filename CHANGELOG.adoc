@@ -5,6 +5,7 @@
 * **[Cluster]** Treat Cluster membership query errors as warnings.
 * **[Cluster]** Sort snapshot entries in the `recoding.log` by `logPosition` within the same `leadershipTermId` before
 sorting by snapshot entry type.
+* **[Client/C]** Fix `aeron_subscription_resolved_endpoint` signature, i.e. remove const from the out parameter `address`.
 * **[C]** Upgrade to `CMake` 4.4.3.
 
 == 1.53.0 (2026-08-26)
