@@ -18,8 +18,34 @@ and `ClusterBackup.Context.extendedTerminationHook(ExtendedTerminationHook)`.
 `aeron_archive_persistent_subscription_get_and_own_persistent_subscription_context` to allow the caller to take
 ownership of the persistent subscription context, in the same way as `aeron_archive_get_and_own_archive_context` does.
 (https://github.com/aeron-io/aeron/pull/2132[#2132])
-* **[C]** Accept `AERON_HDR_TYPE_ATS_SM` along `AERON_HDR_TYPE_SM` frames in order to support DPDK/ATS setup where raw frames are checked before forwarding them to the `sender` thread.
+* **[Driver/C]** Accept `AERON_HDR_TYPE_ATS_SM` along `AERON_HDR_TYPE_SM` frames in order to support DPDK/ATS setup
+where raw frames are checked before forwarding them to the `sender` thread.
+* **[Client/C]** Fix log buffer corruption when pre-touch is used and the native pre-touch is not available
+(`AERON_NATIVE_PRETOUCH`). (https://github.com/aeron-io/aeron/issues/2139[#2139])
+* **[Client/C]** Fix remove destination by id (`aeron_publication_async_remove_destination_by_id` and
+`aeron_exclusive_publication_async_remove_destination_by_id`), i.e. pass correct destination id to the driver.
+(https://github.com/aeron-io/aeron/issues/2138[#2138])
+* **[C{plus}{plus} Wrapper]** Remove `LossStat.cpp` sample in favor of `loss_stat.c`.
+* **[C{plus}{plus} Wrapper]** Read data frame header values lazily in the wrapper Header.
+(https://github.com/aeron-io/aeron/pull/2135[#2135])
+* **[Archive/Java]** Return replay session id when starting a replay via a response channel.
+(https://github.com/aeron-io/aeron/pull/2134[#2134])
 * **[C]** Upgrade to `CMake` 4.4.3.
+
+== 1.53.2 (2026-09-16)
+
+* **[Driver/C]** Accept `AERON_HDR_TYPE_ATS_SM` along `AERON_HDR_TYPE_SM` frames in order to support DPDK/ATS setup
+where raw frames are checked before forwarding them to the `sender` thread.
+* **[Client/C]** Fix log buffer corruption when pre-touch is used and the native pre-touch is not available
+(`AERON_NATIVE_PRETOUCH`). (https://github.com/aeron-io/aeron/issues/2139[#2139])
+* **[Client/C]** Fix remove destination by id (`aeron_publication_async_remove_destination_by_id` and
+`aeron_exclusive_publication_async_remove_destination_by_id`), i.e. pass correct destination id to the driver.
+(https://github.com/aeron-io/aeron/issues/2138[#2138])
+* **[C{plus}{plus} Wrapper]** Remove `LossStat.cpp` sample in favor of `loss_stat.c`.
+* **[C{plus}{plus} Wrapper]** Read data frame header values lazily in the wrapper Header.
+(https://github.com/aeron-io/aeron/pull/2135[#2135])
+* **[Archive/Java]** Return replay session id when starting a replay via a response channel.
+(https://github.com/aeron-io/aeron/pull/2134[#2134])
 
 == 1.53.1 (2026-09-11)
 
@@ -79,6 +105,14 @@ configurable via the new `aeron.thread.naming` system property:
 * **[Driver]** https://github.com/aeron-io/aeron/wiki/Channel-Configuration#timestamps[Outgoing and incoming timestamps]
 (`media-rcv-ts-offset`, `channel-rcv-ts-offset`,`channel-snd-ts-offset`) are now applied to all messages within a packet
 sent/received not just the first message.
+
+=== Known issues
+
+* **[Driver/C]** Using ATS with DPDK stopped working due to packet validation changes.
++
+Affects <<1.53.0 (2026-08-26)>> and <<1.53.1 (2026-09-11)>>.
++
+Fixed in <<1.53.2 (2026-09-16)>>.
 
 === Changelog
 
