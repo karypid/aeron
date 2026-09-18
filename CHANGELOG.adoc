@@ -136,7 +136,7 @@ sent/received not just the first message.
 +
 Affects <<1.53.0 (2026-08-26)>> and <<1.53.1 (2026-09-11)>>.
 +
-Fixed in <<1.53.2 (2026-09-17)>>.
+Fixed in <<1.53.2 (2026-09-18)>>.
 
 === Changelog
 
