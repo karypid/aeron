@@ -27,6 +27,7 @@ channel (e.g. replay channel for Archive). (https://github.com/aeron-io/aeron/is
 * **[Driver/Java]** Fix `AbstractMinMulticastFlowControl#onIdle` that could drop live receivers.
 (https://github.com/aeron-io/aeron/pull/2144[#2144])
 * **[Driver/Java]** Fix inactive destination removal bug for dynamic MDC.
+* **[Driver/C]** Min flow control reports the wrong receiver when one times out. (https://github.com/aeron-io/aeron/pull/2146[#2146])
 * **[Client/C]** Fix log buffer corruption when pre-touch is used and the native pre-touch is not available
 (`AERON_NATIVE_PRETOUCH`). (https://github.com/aeron-io/aeron/issues/2139[#2139])
 * **[Client/C]** Fix remove destination by id (`aeron_publication_async_remove_destination_by_id` and
@@ -54,6 +55,7 @@ channel (e.g. replay channel for Archive). (https://github.com/aeron-io/aeron/is
 * **[Driver/Java]** Fix `AbstractMinMulticastFlowControl#onIdle` that could drop live receivers.
 (https://github.com/aeron-io/aeron/pull/2144[#2144])
 * **[Driver/Java]** Fix inactive destination removal bug for dynamic MDC.
+* **[Driver/C]** Min flow control reports the wrong receiver when one times out. (https://github.com/aeron-io/aeron/pull/2146[#2146])
 * **[Client/C]** Fix log buffer corruption when pre-touch is used and the native pre-touch is not available
 (`AERON_NATIVE_PRETOUCH`). (https://github.com/aeron-io/aeron/issues/2139[#2139])
 * **[Client/C]** Fix remove destination by id (`aeron_publication_async_remove_destination_by_id` and
