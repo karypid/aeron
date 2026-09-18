@@ -44,7 +44,7 @@ channel (e.g. replay channel for Archive). (https://github.com/aeron-io/aeron/is
 * **[Java]** Upgrade to `Versions` 0.64.0.
 * **[C]** Upgrade to `CMake` 4.4.3.
 
-== 1.53.2 (unreleased)
+== 1.53.2 (2026-09-18)
 
 * **[Driver/C]** Accept `AERON_HDR_TYPE_ATS_SM` along `AERON_HDR_TYPE_SM` frames in order to support DPDK/ATS setup
 where raw frames are checked before forwarding them to the `sender` thread.
