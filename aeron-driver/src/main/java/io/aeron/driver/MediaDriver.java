@@ -79,20 +79,15 @@ import org.agrona.concurrent.status.CountersManager;
 import org.agrona.concurrent.status.StatusIndicator;
 import org.agrona.concurrent.status.UnsafeBufferStatusIndicator;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.net.StandardSocketOptions;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.DatagramChannel;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -495,19 +490,19 @@ public final class MediaDriver implements AutoCloseable
             {
                 final Consumer<String> logger = ctx.warnIfDirectoryExists() ? System.err::println : (s) -> {};
                 final MappedByteBuffer cncByteBuffer = ctx.mapExistingCncFile(logger);
-                try
+                if (null != cncByteBuffer)
                 {
+                    final File cncFile = new File(ctx.aeronDirectory(), CncFileDescriptor.CNC_FILE);
                     if (CommonContext.isDriverActive(ctx.driverTimeoutMs(), logger, cncByteBuffer))
                     {
-                        throw new ActiveDriverException("Active media driver detected: " +
-                            new File(ctx.aeronDirectory(), CncFileDescriptor.CNC_FILE));
+                        throw new ActiveDriverException("Active media driver detected: " + cncFile);
                     }
 
-                    reportExistingErrors(ctx, cncByteBuffer);
-                }
-                finally
-                {
-                    BufferUtil.free(cncByteBuffer);
+                    CommonContext.saveExistingErrors(
+                        cncFile,
+                        CommonContext.errorLogBuffer(cncByteBuffer),
+                        CommonContext.fallbackLogger(),
+                        "driver");
                 }
             }
 
@@ -515,34 +510,6 @@ public final class MediaDriver implements AutoCloseable
         }
 
         IoUtil.ensureDirectoryExists(ctx.aeronDirectory(), "aeron");
-    }
-
-    private static void reportExistingErrors(final Context ctx, final MappedByteBuffer cncByteBuffer)
-    {
-        try
-        {
-            final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            final int observations = ctx.saveErrorLog(new PrintStream(baos, false, US_ASCII), cncByteBuffer);
-            if (observations > 0)
-            {
-                final StringBuilder builder = new StringBuilder(ctx.aeronDirectoryName());
-                IoUtil.removeTrailingSlashes(builder);
-
-                final SimpleDateFormat dateFormat = new SimpleDateFormat("-yyyy-MM-dd-HH-mm-ss-SSSZ");
-                builder.append(dateFormat.format(new Date())).append("-error.log");
-                final String errorLogFilename = builder.toString();
-
-                System.err.println("WARNING: Existing errors saved to: " + errorLogFilename);
-                try (FileOutputStream out = new FileOutputStream(errorLogFilename))
-                {
-                    baos.writeTo(out);
-                }
-            }
-        }
-        catch (final Exception ex)
-        {
-            LangUtil.rethrowUnchecked(ex);
-        }
     }
 
     /**

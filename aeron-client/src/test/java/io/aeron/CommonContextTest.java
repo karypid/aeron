@@ -16,24 +16,35 @@
 package io.aeron;
 
 import io.aeron.exceptions.ConcurrentConcludeException;
+import io.aeron.test.Tests;
 import org.agrona.ErrorHandler;
+import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.SystemEpochClock;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.errors.DistinctErrorLog;
 import org.agrona.concurrent.errors.LoggingErrorHandler;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
 
 import static io.aeron.CommonContext.FALLBACK_LOGGER_PROP_NAME;
 import static java.nio.ByteBuffer.allocateDirect;
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -44,7 +55,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.AdditionalMatchers.and;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.endsWith;
@@ -188,6 +201,111 @@ class CommonContextTest
 
         verify(logger).println(and(startsWith("WARNING: existing errors saved to: "), endsWith("-error.log")));
         verifyNoMoreInteractions(logger);
+    }
+
+    @Test
+    void saveExistingErrorsFailsWithNullPointerExceptionIfMarkFileIsNull()
+    {
+        assertThrowsExactly(
+            NullPointerException.class,
+            () -> CommonContext.saveExistingErrors(
+                null,
+                mock(AtomicBuffer.class),
+                mock(PrintStream.class),
+                ""));
+    }
+
+    @Test
+    void saveExistingErrorsFailsWithNullPointerExceptionIfErrorBufferIsNull()
+    {
+        assertThrowsExactly(
+            NullPointerException.class,
+            () -> CommonContext.saveExistingErrors(
+                new File("test.dat"),
+                null,
+                mock(PrintStream.class),
+                ""));
+    }
+
+    @Test
+    void saveExistingErrorsFailsWithNullPointerExceptionIfLoggerIsNull()
+    {
+        assertThrowsExactly(
+            NullPointerException.class,
+            () -> CommonContext.saveExistingErrors(
+                new File("test.dat"),
+                mock(AtomicBuffer.class),
+                null,
+                ""));
+    }
+
+    @Test
+    void saveExistingErrorsFailsWithNullPointerExceptionIfErrorFilePrefixIsNull()
+    {
+        assertThrowsExactly(
+            NullPointerException.class,
+            () -> CommonContext.saveExistingErrors(
+                new File("test.dat"),
+                mock(AtomicBuffer.class),
+                mock(PrintStream.class),
+                null));
+    }
+
+    @Test
+    @EnabledOnOs({ OS.LINUX, OS.MAC })
+    void saveExistingErrorsShouldDumpErrorsToLoggerIfSavingToFileFails(final @TempDir Path tempDir) throws Exception
+    {
+        final File markFile = tempDir.resolve("test.dat").toFile();
+        final DistinctErrorLog errorLog =
+            new DistinctErrorLog(new UnsafeBuffer(allocateDirect(16 * 1024)), SystemEpochClock.INSTANCE);
+        final IndexOutOfBoundsException customError = new IndexOutOfBoundsException("test me");
+        assertTrue(errorLog.record(customError));
+        final PrintStream logger = mock(PrintStream.class);
+        final String errorFilePrefix = "test";
+
+        Tests.markImmutable(tempDir);
+        try
+        {
+            CommonContext.saveExistingErrors(markFile, errorLog.buffer(), logger, errorFilePrefix);
+        }
+        finally
+        {
+            Tests.unmarkImmutable(tempDir);
+        }
+
+        final InOrder inOrder = inOrder(logger);
+        final ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
+        inOrder.verify(logger).println(fileNameCaptor.capture());
+        final String msg = fileNameCaptor.getValue();
+        assertThat(msg, Matchers.startsWith("ERROR: Failed to save existing errors to: "));
+        final Path errorFilePath = Paths.get(msg.substring(msg.lastIndexOf(": ") + 2));
+        assertEquals(tempDir, errorFilePath.getParent());
+        final String errorFileName = errorFilePath.getFileName().toString();
+        assertThat(
+            errorFileName,
+            Matchers.allOf(Matchers.startsWith(errorFilePrefix + "-"), Matchers.endsWith("-error.log")));
+
+        final ArgumentCaptor<Object> exceptionCaptor = ArgumentCaptor.forClass(Object.class);
+        inOrder.verify(logger, atLeastOnce()).println(exceptionCaptor.capture());
+        final String errorMessage = exceptionCaptor.getAllValues().get(0).toString();
+        assertThat(errorMessage, Matchers.containsString(": "));
+        final Class<?> actualIoErrorClass = Class.forName(errorMessage.substring(0, errorMessage.indexOf(": ")));
+        assertTrue(IOException.class.isAssignableFrom(actualIoErrorClass));
+
+        inOrder.verify(logger).println();
+        inOrder.verify(logger).println("Dumping errors here:");
+        inOrder.verify(logger).println();
+
+        final ArgumentCaptor<byte[]> savedErrorsCaptor = ArgumentCaptor.forClass(byte[].class);
+        inOrder.verify(logger).write(savedErrorsCaptor.capture(), anyInt(), anyInt());
+        final byte[] buff = savedErrorsCaptor.getValue();
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        CommonContext.printErrorLog(errorLog.buffer(), new PrintStream(baos, false, US_ASCII));
+        final byte[] expected = baos.toByteArray();
+        assertEquals(
+            -1,
+            Arrays.mismatch(expected, 0, expected.length, buff, 0, expected.length));
     }
 
     @Test

@@ -128,7 +128,7 @@ configurable via the new `aeron.thread.naming` system property:
 
 * **[Driver]** https://github.com/aeron-io/aeron/wiki/Channel-Configuration#timestamps[Outgoing and incoming timestamps]
 (`media-rcv-ts-offset`, `channel-rcv-ts-offset`,`channel-snd-ts-offset`) are now applied to all messages within a packet
-sent/received not just the first message.
+sent/received not just the first frame.
 
 === Known issues
 
