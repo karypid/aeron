@@ -83,7 +83,6 @@ static void error_log_reader_save_to_file(
 int aeron_report_existing_errors(aeron_mapped_file_t *cnc_map, const char *aeron_dir)
 {
     char buffer[AERON_MAX_PATH];
-    int result = 0;
 
     aeron_cnc_metadata_t *metadata = (aeron_cnc_metadata_t *)cnc_map->addr;
 
@@ -91,7 +90,6 @@ int aeron_report_existing_errors(aeron_mapped_file_t *cnc_map, const char *aeron
         aeron_error_log_exists(aeron_cnc_error_log_buffer(cnc_map->addr), (size_t)metadata->error_log_buffer_length))
     {
         char datestamp[AERON_FORMAT_DATE_MAX_LENGTH];
-        FILE *saved_errors_file = NULL;
 
         aeron_format_date(datestamp, sizeof(datestamp) - 1, aeron_epoch_clock());
         while (true)
@@ -107,28 +105,47 @@ int aeron_report_existing_errors(aeron_mapped_file_t *cnc_map, const char *aeron
 
         snprintf(buffer, sizeof(buffer), "%s-%s-error.log", aeron_dir, datestamp);
 
-        if ((saved_errors_file = fopen(buffer, "w")) != NULL)
+        FILE *error_file = NULL;
+        if (NULL != (error_file = fopen(buffer, "w")))
         {
             uint64_t observations = aeron_error_log_read(
                 aeron_cnc_error_log_buffer(metadata),
                 (size_t)metadata->error_log_buffer_length,
                 error_log_reader_save_to_file,
-                saved_errors_file,
+                error_file,
                 0);
 
-            AERON_FPRINTF(saved_errors_file, "\n%" PRIu64 " distinct errors observed.\n", observations);
-            AERON_FPRINTF(stderr, "WARNING: Existing errors saved to: %s\n", buffer);
+            if (0 != observations)
+            {
+                AERON_FPRINTF(error_file, "\n%" PRIu64 " distinct errors observed.\n", observations);
+                AERON_FPRINTF(stderr, "WARNING: Existing errors saved to: %s\n", buffer);
+            }
 
-            fclose(saved_errors_file);
+            fclose(error_file);
         }
         else
         {
-            AERON_SET_ERR(errno, "Failed to open saved_error_file: %s", buffer);
-            result = -1;
+            AERON_SET_ERR(errno, "Failed to open: %s", buffer);
+
+            FILE *fallback_logger = stderr;
+            AERON_FPRINTF(fallback_logger, "ERROR: Failed to save existing errors to: %s\n", buffer);
+            AERON_FPRINTF(fallback_logger, "%s\n", aeron_errmsg());
+            aeron_err_clear();
+
+            AERON_FPRINTF(fallback_logger, "\n%s\n", "Dumping errors here:");
+
+            uint64_t observations = aeron_error_log_read(
+                aeron_cnc_error_log_buffer(metadata),
+                (size_t)metadata->error_log_buffer_length,
+                error_log_reader_save_to_file,
+                fallback_logger,
+                0);
+
+            AERON_FPRINTF(fallback_logger, "\n%" PRIu64 " distinct errors observed.\n", observations);
         }
     }
 
-    return result;
+    return 0;
 }
 
 int aeron_driver_ensure_dir_is_recreated(aeron_driver_context_t *context)
