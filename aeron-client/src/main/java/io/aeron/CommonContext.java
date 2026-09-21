@@ -1303,8 +1303,6 @@ public class CommonContext implements Cloneable
             }
             catch (final IOException ex)
             {
-                ex.printStackTrace();
-
                 logger.println("ERROR: Failed to save existing errors to: " + errorLogFile);
                 ex.printStackTrace(logger);
 
