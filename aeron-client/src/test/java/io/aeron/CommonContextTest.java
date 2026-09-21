@@ -23,7 +23,6 @@ import org.agrona.concurrent.SystemEpochClock;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.errors.DistinctErrorLog;
 import org.agrona.concurrent.errors.LoggingErrorHandler;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -45,6 +44,10 @@ import static io.aeron.CommonContext.FALLBACK_LOGGER_PROP_NAME;
 import static java.nio.ByteBuffer.allocateDirect;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -54,16 +57,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.endsWith;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.startsWith;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -179,6 +179,11 @@ class CommonContextTest
 
         CommonContext.saveExistingErrors(markFile, errorBuffer, logger, errorFilePrefix);
 
+        final File[] files = tempDir.toFile().listFiles(
+            (dir, name) -> name.endsWith("-error.log") && name.startsWith(errorFilePrefix));
+        assertNotNull(files);
+        assertEquals(0, files.length);
+
         verifyNoInteractions(logger);
     }
 
@@ -198,8 +203,9 @@ class CommonContextTest
             (dir, name) -> name.endsWith("-error.log") && name.startsWith(errorFilePrefix));
         assertNotNull(files);
         assertEquals(1, files.length);
+        final File file = files[0];
 
-        verify(logger).println(and(startsWith("WARNING: existing errors saved to: "), endsWith("-error.log")));
+        verify(logger).println("WARNING: existing errors saved to: " + file.getAbsolutePath());
         verifyNoMoreInteractions(logger);
     }
 
@@ -253,7 +259,7 @@ class CommonContextTest
 
     @Test
     @EnabledOnOs(OS.MAC)
-    void saveExistingErrorsShouldDumpErrorsToLoggerIfSavingToFileFails(final @TempDir Path tempDir) throws Exception
+    void saveExistingErrorsShouldDumpErrorsToLoggerIfSavingToFileFails() throws Exception
     {
         final File markFile = tempDir.resolve("test.dat").toFile();
         final DistinctErrorLog errorLog =
@@ -277,18 +283,18 @@ class CommonContextTest
         final ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
         inOrder.verify(logger).println(fileNameCaptor.capture());
         final String msg = fileNameCaptor.getValue();
-        assertThat(msg, Matchers.startsWith("ERROR: Failed to save existing errors to: "));
+        assertThat(msg, startsWith("ERROR: Failed to save existing errors to: "));
         final Path errorFilePath = Paths.get(msg.substring(msg.lastIndexOf(": ") + 2));
         assertEquals(tempDir, errorFilePath.getParent());
         final String errorFileName = errorFilePath.getFileName().toString();
         assertThat(
             errorFileName,
-            Matchers.allOf(Matchers.startsWith(errorFilePrefix + "-"), Matchers.endsWith("-error.log")));
+            allOf(startsWith(errorFilePrefix + "-"), endsWith("-error.log")));
 
         final ArgumentCaptor<Object> exceptionCaptor = ArgumentCaptor.forClass(Object.class);
         inOrder.verify(logger, atLeastOnce()).println(exceptionCaptor.capture());
         final String errorMessage = exceptionCaptor.getAllValues().get(0).toString();
-        assertThat(errorMessage, Matchers.containsString(": "));
+        assertThat(errorMessage, containsString(": "));
         final Class<?> actualIoErrorClass = Class.forName(errorMessage.substring(0, errorMessage.indexOf(": ")));
         assertTrue(IOException.class.isAssignableFrom(actualIoErrorClass));
 
