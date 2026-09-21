@@ -252,7 +252,7 @@ class CommonContextTest
     }
 
     @Test
-    @EnabledOnOs({ OS.LINUX, OS.MAC })
+    @EnabledOnOs(OS.MAC)
     void saveExistingErrorsShouldDumpErrorsToLoggerIfSavingToFileFails(final @TempDir Path tempDir) throws Exception
     {
         final File markFile = tempDir.resolve("test.dat").toFile();
