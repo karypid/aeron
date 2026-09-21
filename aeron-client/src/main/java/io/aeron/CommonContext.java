@@ -59,7 +59,6 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -549,14 +548,9 @@ public class CommonContext implements Cloneable
      */
     public static final String THREAD_NAMING_DEFAULT = THREAD_NAMING_CLASSIC;
 
-    private static final DateTimeFormatter DATE_TIME_FORMATTER =
-        new DateTimeFormatterBuilder()
-            .parseCaseInsensitive()
-            .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-            .parseLenient()
-            .appendOffset("+HHMM", "Z")
-            .parseStrict()
-            .toFormatter();
+    static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss.SSSSSSZ");
+
+    static final DateTimeFormatter FILE_NAME_FORMATTER = DateTimeFormatter.ofPattern("uuuu-MM-dd-HH-mm-ss-SSSSSSZ");
     /**
      * Choose a thread/role name depending on the configured naming scheme.
      *
@@ -1293,7 +1287,7 @@ public class CommonContext implements Cloneable
         {
             final File errorLogFile = new File(
                 markFile.getParentFile(), errorFilePrefix + '-' +
-                DATE_TIME_FORMATTER.format(OffsetDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())) +
+                FILE_NAME_FORMATTER.format(OffsetDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())) +
                 "-error.log");
 
             try (FileOutputStream out = new FileOutputStream(errorLogFile))

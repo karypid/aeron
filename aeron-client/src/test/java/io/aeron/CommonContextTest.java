@@ -28,6 +28,8 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -38,9 +40,16 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
 
+import static io.aeron.CommonContext.DATE_TIME_FORMATTER;
 import static io.aeron.CommonContext.FALLBACK_LOGGER_PROP_NAME;
+import static io.aeron.CommonContext.FILE_NAME_FORMATTER;
 import static java.nio.ByteBuffer.allocateDirect;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -398,5 +407,45 @@ class CommonContextTest
         assertEquals(
             tempDir.resolve("one/three/four/x/y/z").toFile().getCanonicalFile(),
             commonContext.aeronDirectory());
+    }
+
+    @ParameterizedTest
+    @MethodSource("fileNameFormats")
+    void fileNameFormatter(final long epochTimestampMs, final ZoneId zone, final String expected)
+    {
+        assertEquals(
+            expected,
+            FILE_NAME_FORMATTER.format(OffsetDateTime.ofInstant(Instant.ofEpochMilli(epochTimestampMs), zone)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("timestampFormats")
+    void timestampFormatter(final long epochTimestampMs, final ZoneId zone, final String expected)
+    {
+        assertEquals(
+            expected,
+            DATE_TIME_FORMATTER.format(OffsetDateTime.ofInstant(Instant.ofEpochMilli(epochTimestampMs), zone)));
+    }
+
+    private static List<Arguments> fileNameFormats()
+    {
+        return List.of(
+          Arguments.arguments(0L, ZoneOffset.UTC, "1970-01-01-00-00-00-000000+0000"),
+          Arguments.arguments(1L, ZoneOffset.UTC, "1970-01-01-00-00-00-001000+0000"),
+          Arguments.arguments(372492374937L, ZoneOffset.UTC, "1981-10-21-06-06-14-937000+0000"),
+          Arguments.arguments(458398503485L, ZoneOffset.ofHours(5), "1984-07-11-17-55-03-485000+0500"),
+          Arguments.arguments(372492374937L, ZoneOffset.ofHours(-4), "1981-10-21-02-06-14-937000-0400"),
+          Arguments.arguments(1790011478302L, ZoneOffset.ofHours(1), "2026-09-21-18-24-38-302000+0100"));
+    }
+
+    private static List<Arguments> timestampFormats()
+    {
+        return List.of(
+          Arguments.arguments(0L, ZoneOffset.UTC, "1970-01-01 00:00:00.000000+0000"),
+          Arguments.arguments(1L, ZoneOffset.UTC, "1970-01-01 00:00:00.001000+0000"),
+          Arguments.arguments(372492374937L, ZoneOffset.UTC, "1981-10-21 06:06:14.937000+0000"),
+          Arguments.arguments(2458398503485L, ZoneOffset.ofHours(5), "2047-11-26 21:28:23.485000+0500"),
+          Arguments.arguments(372492374937L, ZoneOffset.ofHours(-4), "1981-10-21 02:06:14.937000-0400"),
+          Arguments.arguments(1790011478302L, ZoneOffset.ofHours(1), "2026-09-21 18:24:38.302000+0100"));
     }
 }
