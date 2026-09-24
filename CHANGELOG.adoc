@@ -662,6 +662,10 @@ but is now explicitly enforced via the ClusteredServiceContainer.Configuration.M
 * **[Java]** Upgrade to `Versions` 0.54.0.
 * **[C]** Upgrade to `CMake` 4.3.2.
 
+== 1.50.7 (2026-09-24)
+
+* **[C]** Move `struct mmsghdr` declaration to the driver module.
+
 == 1.50.6 (2026-09-24)
 
 * **[Driver/C]** Fix `aeron_udp_channel_transport_sendv` NULL address dereference. (https://github.com/aeron-io/aeron/pull/1982[#1982])
