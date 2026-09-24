@@ -2,6 +2,7 @@
 
 == 1.54.0 (unreleased)
 
+* **[C]** Ignore missing properties files in `aeron_properties_file_load`. (https://github.com/aeron-io/aeron/pull/2088[#2088])
 * **[Cluster]** Close `RecordingLogValidator` upon completion. (https://github.com/aeron-io/aeron/pull/2151[#2151])
 * **[C/C{plus}{plus} Wrapper]** Implement `deleteSessionBuffer` for the fragment assemblers. (https://github.com/aeron-io/aeron/pull/2149[#2149])
 * **[Archive/Java]** Reset activity timestamp of the `ArchiveMarkFile` if creation fails partway. (https://github.com/aeron-io/aeron/issues/2148[#2148])
