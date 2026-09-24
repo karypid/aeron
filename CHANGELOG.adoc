@@ -551,9 +551,9 @@ codes defined by Aeron will be passed to the handler and OS error codes will be 
 to use its copy of the source files instead. (https://github.com/aeron-io/aeron/pull/1972[#1972])
 * **[C]** Improved Windows implementation of `aeron_dlopen/aeron_dlsym`. (https://github.com/aeron-io/aeron/pull/1976[#1976])
 * **[C]** `aeron_connect` for MSCV unwanted printf. (https://github.com/aeron-io/aeron/pull/1979[#1979])
-* **[C]** Fix `aeron_udp_channel_transport_sendv` NULL address dereference. (https://github.com/aeron-io/aeron/pull/1982[#1982])
+* **[Driver/C]** Fix `aeron_udp_channel_transport_sendv` NULL address dereference. (https://github.com/aeron-io/aeron/pull/1982[#1982])
 * **[C]** `aeron_udp_channel_transport_init` `recv_fd` init bug. (https://github.com/aeron-io/aeron/pull/1978[#1978])
-* **[C]** Fixes a memory leak in the `aeron_udp_channel_transport_close`. (https://github.com/aeron-io/aeron/pull/1977[#1977])
+* **[Driver/C]** Fix a memory leak in the `aeron_udp_channel_transport_close`. (https://github.com/aeron-io/aeron/pull/1977[#1977])
 * **[C/C{plus}{plus} Wrapper]** Added support for C/C{plus}{plus} builds using MSVC on Windows ARM. (https://github.com/aeron-io/aeron/pull/1975[#1975])
 * **[Client/Java/C]** Use `aeron-client` as a name for client conductor thread, i.e. shorter name to fit the 15 characters
 limit of the `pthread_setname_np` API.
@@ -661,6 +661,18 @@ but is now explicitly enforced via the ClusteredServiceContainer.Configuration.M
 * **[Java]** Upgrade to `Shadow` 9.4.1.
 * **[Java]** Upgrade to `Versions` 0.54.0.
 * **[C]** Upgrade to `CMake` 4.3.2.
+
+== 1.50.6 (2026-09-24)
+
+* **[Driver/C]** Fix `aeron_udp_channel_transport_sendv` NULL address dereference. (https://github.com/aeron-io/aeron/pull/1982[#1982])
+* **[Driver/C]** Fix a memory leak in the `aeron_udp_channel_transport_close`. (https://github.com/aeron-io/aeron/pull/1977[#1977])
+* **[C]** Move `struct mmsghdr` declaration to `aeron_socket.h`, i.e. declare it once.
+* **[Driver/C]** Increase max number of packets that can be sent/received in one go to 64.
+* **[Driver/C]** Move `mmsghdr` array creation to initialization time (`aeron_driver_receiver_init`), i.e. avoid paying
+allocation costs on every duty cycle.
+* **[Driver/C]** Poll each socket up to `AERON_UDP_TRANSPORT_POLLER_PER_SOCKET_POLL_LIMIT` times if there is more data to read.
+* **[Driver]** Optimize message send path by moving everything else to slow tick work.
+* **[Driver]** Optimize message receive path by moving everything else to slow tick work.
 
 == 1.50.5 (2026-09-02)
 
