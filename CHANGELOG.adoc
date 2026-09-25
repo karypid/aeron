@@ -2,6 +2,8 @@
 
 == 1.54.0 (unreleased)
 
+* **[Client/C]** Ignore unknown responses from the media driver, i.e. do not exit process.
+* **[Archive/C]** Translate error codes to `ARCHIVE_ERROR_CODE_` range when invoking user provided error handler.
 * **[Cluster]** Retry joining the active log in `ClusteredServiceAgent` after a `RegistrationException` instead of
 dropping the `ActiveLogEvent`. (https://github.com/aeron-io/aeron/pull/2150[#2150])
 * **[Cluster]** Close `RecordingLogValidator` upon completion. (https://github.com/aeron-io/aeron/pull/2151[#2151])
@@ -51,6 +53,17 @@ channel (e.g. replay channel for Archive). (https://github.com/aeron-io/aeron/is
 * **[Java]** Upgrade to `ByteBuddy` 1.18.14.
 * **[Java]** Upgrade to `Versions` 0.64.0.
 * **[C]** Upgrade to `CMake` 4.4.3.
+
+== 1.53.3 (unreleased)
+
+* **[Client/C]** Ignore unknown responses from the media driver, i.e. do not exit process.
+* **[Archive/C]** Translate error codes to `ARCHIVE_ERROR_CODE_` range when invoking user provided error handler.
+* **[Cluster]** Retry joining the active log in `ClusteredServiceAgent` after a `RegistrationException` instead of
+dropping the `ActiveLogEvent`. (https://github.com/aeron-io/aeron/pull/2150[#2150])
+* **[Cluster]** Close `RecordingLogValidator` upon completion. (https://github.com/aeron-io/aeron/pull/2151[#2151])
+* **[Archive/Java]** Reset activity timestamp of the `ArchiveMarkFile` if creation fails partway. (https://github.com/aeron-io/aeron/issues/2148[#2148])
+* **[Cluster]** Reset activity timestamp of the `ClusterMarkFile` if creation fails partway. (https://github.com/aeron-io/aeron/issues/2148[#2148])
+* **[C/C{plus}{plus} Wrapper]** Implement `deleteSessionBuffer` for the fragment assemblers. (https://github.com/aeron-io/aeron/pull/2149[#2149])
 
 == 1.53.2 (2026-09-18)
 
