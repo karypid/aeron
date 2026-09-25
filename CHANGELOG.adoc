@@ -2,6 +2,7 @@
 
 == 1.54.0 (unreleased)
 
+* **[Client/C{plus}{plus} Wrapper]** Fix error handling in `AgentRunner`.
 * **[Client/C]** Ignore unknown responses from the media driver, i.e. do not exit process.
 * **[Archive/C]** Translate error codes to `ARCHIVE_ERROR_CODE_` range when invoking user provided error handler.
 * **[Cluster]** Retry joining the active log in `ClusteredServiceAgent` after a `RegistrationException` instead of
@@ -56,6 +57,7 @@ channel (e.g. replay channel for Archive). (https://github.com/aeron-io/aeron/is
 
 == 1.53.3 (unreleased)
 
+* **[Client/C{plus}{plus} Wrapper]** Fix error handling in `AgentRunner`.
 * **[Client/C]** Ignore unknown responses from the media driver, i.e. do not exit process.
 * **[Archive/C]** Translate error codes to `ARCHIVE_ERROR_CODE_` range when invoking user provided error handler.
 * **[Cluster]** Retry joining the active log in `ClusteredServiceAgent` after a `RegistrationException` instead of
